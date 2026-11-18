@@ -27,9 +27,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! gh api "repos/${GITHUB_REPOSITORY}/pages" >/dev/null 2>&1; then
-            if [ "${{ github.event_name }}" = "schedule" ]; then
-              echo "Pages is not switched on yet (Settings -> Pages -> Source: GitHub Actions)."; echo "go=no" >> $GITHUB_OUTPUT; exit 0; fi
-            echo "Pages is off; the deploy job will try to switch it on."; fi
+            echo "Pages is not switched on yet (Settings -> Pages -> Source: GitHub Actions)."; echo "go=no" >> $GITHUB_OUTPUT; exit 0; fi
           URL="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"
           if [ "${{ github.event_name }}" = "schedule" ] && curl -sfI "$URL" >/dev/null; then
             echo "Site already live at $URL"; echo "go=no" >> $GITHUB_OUTPUT; exit 0; fi
@@ -46,7 +44,6 @@ jobs:
       - uses: actions/checkout@v4
       - id: pages
         uses: actions/configure-pages@v5
-        with: { enablement: true }
       - name: Make the site findable on Google
         run: |
           SITE="${{ steps.pages.outputs.base_url }}/"
