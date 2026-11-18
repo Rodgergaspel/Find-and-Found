@@ -98,7 +98,7 @@ jobs:
     if: ${{ !cancelled() && needs.android.result == 'success' && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: out, merge-multiple: true }
       - uses: softprops/action-gh-release@v2
         with:
