@@ -7,16 +7,18 @@ service cloud.firestore {
     function ownsNew() { return signedIn() && request.resource.data.ownerId == me(); }
     function ownsOld() { return signedIn() && resource.data.ownerId == me(); }
     function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    // community reports can only be added, never wiped by someone else
+    function keepsReports() { return request.resource.data.get('reportsBy', []).hasAll(resource.data.get('reportsBy', [])) && request.resource.data.get('reportsBy', []).size() <= resource.data.get('reportsBy', []).size() + 1; }
 
     // Lost & found reports and property listings: everyone reads; you change only your own
-    match /reports/{id}  { allow read: if true; allow create: if ownsNew(); allow update: if (ownsOld() && request.resource.data.ownerId == me()) || isAdmin() || (signedIn() && onlyChanges(['flags', 'reportsBy', 'aiCheck'])); allow delete: if ownsOld() || isAdmin(); }
-    match /listings/{id} { allow read: if true; allow create: if ownsNew(); allow update: if (ownsOld() && request.resource.data.ownerId == me()) || isAdmin() || (signedIn() && onlyChanges(['flags', 'reportsBy', 'aiCheck'])); allow delete: if ownsOld() || isAdmin(); }
+    match /reports/{id}  { allow read: if true; allow create: if ownsNew(); allow update: if (ownsOld() && request.resource.data.ownerId == me()) || isAdmin() || (signedIn() && onlyChanges(['flags', 'reportsBy', 'aiCheck']) && keepsReports()); allow delete: if ownsOld() || isAdmin(); }
+    match /listings/{id} { allow read: if true; allow create: if ownsNew(); allow update: if (ownsOld() && request.resource.data.ownerId == me()) || isAdmin() || (signedIn() && onlyChanges(['flags', 'reportsBy', 'aiCheck']) && keepsReports()); allow delete: if ownsOld() || isAdmin(); }
 
     // Safety alerts: anyone signed in may add their confirmation
     match /alerts/{id} {
       allow read: if true;
       allow create: if ownsNew();
-      allow update: if (ownsOld() && request.resource.data.ownerId == me()) || isAdmin() || (signedIn() && onlyChanges(['confirms', 'flags', 'reportsBy', 'aiCheck']));
+      allow update: if (ownsOld() && request.resource.data.ownerId == me()) || isAdmin() || (signedIn() && onlyChanges(['confirms', 'flags', 'reportsBy', 'aiCheck']) && keepsReports());
       allow delete: if ownsOld() || isAdmin();
     }
 
@@ -54,8 +56,8 @@ service cloud.firestore {
     match /help/{id} { allow read: if true; allow create: if ownsNew(); allow update, delete: if ownsOld() || isAdmin(); }
     // Referrals: you can record who invited you, once
     match /refs/{uid} { allow read: if true; allow create: if signedIn() && me() == uid && request.resource.data.by != uid; }
-    // Shared translations
-    match /i18n/{id} { allow read: if true; allow create: if signedIn(); }
+    // Shared translations: built into the app; only admins can add more, so nobody can change the app's wording for others
+    match /i18n/{id} { allow read: if true; allow create: if isAdmin(); }
     // Stories and QR tags
     match /stories/{id} { allow read: if true; allow create: if ownsNew(); allow delete: if ownsOld() || isAdmin(); }
     match /tags/{id} { allow read: if true; allow create: if ownsNew(); allow delete: if ownsOld() || isAdmin(); }

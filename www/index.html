@@ -3,8 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Find & Found: lost and found items, property, safety alerts and help nearby, worldwide, on a satellite map.">
-<title>Find & Found</title>
+<title>Find & Found – Lost and found, property to rent or buy, safety alerts & help nearby</title>
+<meta name="description" content="Lost your phone, wallet, keys, ID or pet? Find & Found is a free app to report lost and found items, find houses, apartments, land and shops to rent or buy, see safety alerts and the nearest police, hospital or shelter – in Kenya and worldwide, in your language.">
+<meta name="keywords" content="lost and found, lost phone, lost ID card, lost wallet, found items, missing pet, missing person alert, houses for rent, apartments to let, land for sale, shops and offices to let, property listings, safety alerts, nearest police station, Nairobi, Kenya, Africa, worldwide">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="canonical" href="__SITE__">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Find & Found">
+<meta property="og:title" content="Find & Found – find what matters, return what belongs">
+<meta property="og:description" content="Free: report lost and found items, find property to rent or buy, see safety alerts and help nearby. Works in your language, worldwide.">
+<meta property="og:url" content="__SITE__"><meta property="og:image" content="__SITE__icon-512.png">
+<meta name="twitter:card" content="summary"><meta name="twitter:title" content="Find & Found"><meta name="twitter:description" content="Lost and found, property, safety alerts and help nearby – free, worldwide.">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[
+{"@type":"WebApplication","name":"Find & Found","url":"__SITE__","applicationCategory":"LifestyleApplication","operatingSystem":"Web, Android, Windows, iOS","inLanguage":["en","sw","fr","es","pt","ar","de"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"Report and search lost and found items, list and find property to rent or buy, share safety alerts and find the nearest police, hospital, church, mosque or shelter on a satellite map.","featureList":["Lost and found reports with private IMEI and serial matching","AI photo and voice search","Property listings sorted by price and distance, free for landlords, agents and property companies","Community safety alerts with fact-check flags","Nearest police, hospital and shelter","Works in many languages and currencies"]},
+{"@type":"Organization","name":"Find & Found","url":"__SITE__","logo":"__SITE__icon-512.png","areaServed":"Worldwide"},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Is Find & Found free?","acceptedAnswer":{"@type":"Answer","text":"Yes. Posting lost and found reports, searching, messaging and listing property are free. Landlords, agents and property companies list for free."}},
+{"@type":"Question","name":"Can a finder ask me to pay to get my item back?","acceptedAnswer":{"@type":"Answer","text":"No. Never pay to get an item back. Meet in a public place, check it's yours, and report anyone who asks for money."}},
+{"@type":"Question","name":"Are my IMEI and serial numbers public?","acceptedAnswer":{"@type":"Answer","text":"No. They are turned into a one-way code before they are saved, so nobody can read them. They are only used to spot a match."}},
+{"@type":"Question","name":"Do I have to be at the location to post?","acceptedAnswer":{"@type":"Answer","text":"No. Type the place, paste a Google Maps link or drop a pin anywhere, then set your search circle."}}]}]}</script>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1650C8">
 <link rel="icon" href="icon-192.png">
@@ -558,6 +576,17 @@ span.star{cursor:default;min-height:0;min-width:0;font-size:16px}
 .sug.aisug{background:var(--soft)}
 .sugs{max-height:min(60vh,520px);overflow-y:auto}
 .noai .aifab,.noai .askai,.noai .sicon[data-a=ailens],.noai .tool[data-a=ai]{display:none!important}
+/* compact map search card and Ask AI button so they don't cover the map */
+#app #hdr{padding:8px!important;gap:6px!important}
+#app #hdr .search{height:42px!important}
+#app #hdr .askai{display:none!important}
+#app #hdr .layers{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+#hdr .layers::-webkit-scrollbar{display:none}
+#app #hdr .lchip{min-height:32px;font-size:13px;padding:0 10px;white-space:nowrap;flex:none}
+.sicon.glens{display:none}.noai .sicon.glens{display:flex}
+.gsearch{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.gsearch a{font-size:12.5px;font-weight:700;text-decoration:none;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card,#fff);color:var(--ink,#0b1b3a)}
+@media (max-width:819px){.aifab{width:48px!important;height:48px!important;min-height:48px!important;padding:0!important;justify-content:center;border-radius:50%!important}.aifab span{display:none!important}}
+@media (min-width:820px){.aifab{min-height:44px;padding:0 14px;font-size:14px}}
 </style>
 <script>document.documentElement.setAttribute('data-theme','light')</script>
 
@@ -730,6 +759,7 @@ svg#map{width:100%;height:100%;display:block;touch-action:pan-y}
 a{color:var(--prop)}
 @media (prefers-reduced-motion:reduce){.pulse{animation:none}}
 @media (max-width:520px){.level{max-width:78%}.stage{height:56vh}}
+
 </style><div class="wrap">
   <header>
     <div class="logo">Find<b>&amp;</b>Found</div>
@@ -1817,9 +1847,9 @@ function headerHtml() {
   }
   var hits = S.showSug ? contentHits(S.query) : { n: 0, html: '' };
   var sugs = S.showSug ? matches(S.query).filter(function (x) { return !(hits.n && x.none); }) : [];
-  return '<form class="search" id="qform" role="search"><span class="muted" style="display:flex">' + svg('search', 17, 2) + '</span><input id="q" autocomplete="off" placeholder="Search places, items, property, alerts or help" aria-label="Search places, lost and found items, property, alerts or help places, or paste a map link" value="' + esc(S.query) + '"><button type="button" class="sicon" data-a="ailens" aria-label="Search with a photo (AI lens)" title="AI lens">' + ic(I2.scan, 19, 2.2) + '</button><button type="button" class="sicon" data-a="aimic" aria-label="Search by voice" title="Voice">' + ic(I2.mic, 19, 2.2) + '</button><button class="btn primary" type="submit">Go</button></form><button class="askai" data-a="ai">' + ic(I2.star, 16, 2.4) + 'Ask AI — describe it, snap it or say it</button>' +
+  return '<form class="search" id="qform" role="search"><span class="muted" style="display:flex">' + svg('search', 17, 2) + '</span><input id="q" autocomplete="off" placeholder="Search places, items, property, alerts or help" aria-label="Search places, lost and found items, property, alerts or help places, or paste a map link" value="' + esc(S.query) + '"><button type="button" class="sicon glens" data-a="glens" aria-label="Search with Google Lens" title="Google Lens">' + ic(I2.scan, 19, 2.2) + '</button><button type="button" class="sicon" data-a="ailens" aria-label="Search with a photo (AI lens)" title="AI lens">' + ic(I2.scan, 19, 2.2) + '</button><button type="button" class="sicon" data-a="aimic" aria-label="Search by voice" title="Voice">' + ic(I2.mic, 19, 2.2) + '</button><button class="btn primary" type="submit">Go</button></form><button class="askai" data-a="ai">' + ic(I2.star, 16, 2.4) + 'Ask AI — describe it, snap it or say it</button>' +
     (sugs.length || hits.n ? '<div class="sugs">' + hits.html + (sugs.length && hits.n ? '<div class="sughd">Places</div>' : '') + sugs.map(function (s, i) { return '<button class="sug" data-a="sug" data-i="' + i + '"' + (s.none ? ' disabled' : '') + '><span class="b" style="font-size:14px">' + (s.link ? '<span style="display:inline-flex;vertical-align:-3px;margin-right:4px">' + svg('link', 15, 2) + '</span>' : '') + esc(s.title) + '</span><span class="small muted">' + esc(s.sub) + '</span></button>'; }).join('') + '</div>' : '') +
-    '<div class="layers" role="group" aria-label="Show on map">' + [['lf', 'Lost & Found', '#E5484D'], ['prop', 'Property', '#3D7BFF'], ['alerts', 'Alerts', '#F5A524']].map(function (l) { return '<button class="lchip' + (S.layers[l[0]] ? ' on' : '') + '" data-a="layer" data-l="' + l[0] + '" aria-pressed="' + S.layers[l[0]] + '"><i style="background:' + l[2] + '"></i>' + l[1] + '</button>'; }).join('') + (local ? '<button class="lchip" data-a="globe" aria-label="Back to globe" style="margin-left:auto">' + svg('globe', 15, 2) + 'Globe</button>' : '') + '</div>';
+    googleRow() + '<div class="layers" role="group" aria-label="Show on map">' + [['lf', 'Lost & Found', '#E5484D'], ['prop', 'Property', '#3D7BFF'], ['alerts', 'Alerts', '#F5A524']].map(function (l) { return '<button class="lchip' + (S.layers[l[0]] ? ' on' : '') + '" data-a="layer" data-l="' + l[0] + '" aria-pressed="' + S.layers[l[0]] + '"><i style="background:' + l[2] + '"></i>' + l[1] + '</button>'; }).join('') + (local ? '<button class="lchip" data-a="globe" aria-label="Back to globe" style="margin-left:auto">' + svg('globe', 15, 2) + 'Globe</button>' : '') + '</div>';
 }
 function statusNote() {
   if (live) return '<div class="live"><i></i>Live · ' + openReports().length + ' lost &amp; found · ' + openListings().length + ' properties · ' + recentAlerts().length + ' alerts</div>';
@@ -2028,7 +2058,7 @@ function alertsSection() {
   }).join('') : '<div class="empty"><div style="font-weight:800">No alerts yet</div><div class="s13 muted">Seen something others nearby should know about? Post an alert.</div></div>';
   return '<div class="sec-head"><div><div class="eyebrow">Safety alerts</div><h2>Know which areas are high and low risk</h2><p>People post what they see — thefts, muggings, accidents, flooding, road blocks — and areas are ranked by how many recent, serious alerts they have.</p></div>' + (S.showAlert ? '' : '<button class="btn primary big" data-a="alnew">' + svg('plus', 18, 2.6) + 'Post an alert</button>') + '</div>' + form +
     '<div class="alerts-grid"><div class="panel"><h3>Areas by risk</h3>' + areasHtml + '<p class="small muted" style="line-height:1.5">Ranked only from alerts posted here in the last 30 days. Few alerts doesn’t mean an area is safe. ' + esc(emergencyLine()) + '</p></div>' +
-    '<div class="panel"><div class="row" style="justify-content:space-between"><h3>Latest alerts</h3><label class="toggle"><input type="checkbox" id="al-map"' + (S.layers.alerts ? ' checked' : '') + '> Show on map</label></div>' + feed + '</div></div>';
+    '<div class="panel"><div class="row" style="justify-content:space-between"><h3>Latest alerts</h3><a class="btn link sm" target="_blank" rel="noopener" href="' + esc('https://news.google.com/search?q=' + encodeURIComponent((S.region && S.region.name || curCountry().name) + ' news') + '&hl=' + (S.lang || 'en') + '&gl=' + curCountry().cc) + '">Local news on Google ↗</a><label class="toggle"><input type="checkbox" id="al-map"' + (S.layers.alerts ? ' checked' : '') + '> Show on map</label></div>' + feed + '</div></div>';
 }
 function adsSection() {
   var af = S.ad, form = '';
@@ -2047,7 +2077,7 @@ function adsSection() {
   var mine = myReqs.length ? '<div class="panel" style="margin-top:16px"><h3>Your ad requests</h3>' + myReqs.slice().reverse().map(function (q) { return '<div class="row"><span class="grow ell b">' + esc(q.name) + '</span><span class="pill ' + (q.status === 'approved' ? 'low' : q.status === 'rejected' ? 'high' : 'medium') + '">' + esc(q.status.toUpperCase()) + '</span></div>'; }).join('') + '</div>' : '';
   var pending = adReqs.filter(function (q) { return q.status === 'pending'; });
   var review = isAdmin ? '<div class="panel" style="margin-top:16px"><h3>Review ads <span class="small muted" style="font-weight:600">(only you see this)</span></h3>' + (pending.length ? pending.map(function (q) { return '<div class="box stack" style="gap:6px"><div class="row" style="justify-content:space-between"><span class="b">' + esc(q.name) + '</span><span class="small muted">' + esc(q.cat) + ' · ' + esc(ago(q.createdAt)) + ' · from ' + esc(nameOf(q.uid)) + '</span></div><span class="s13">' + esc(q.tagline) + '</span><span class="small muted">' + esc(q.contact || '') + (q.link ? ' · ' + esc(q.link) : '') + '</span><div class="row"><button class="btn green" data-a="adok" data-u="' + esc(q.uid) + '" data-id="' + esc(q.id) + '">Approve</button><button class="btn ghost-red" data-a="adno" data-u="' + esc(q.uid) + '" data-id="' + esc(q.id) + '">Decline</button></div></div>'; }).join('') : '<div class="small muted">No ads waiting for review.</div>') + '</div>' : '';
-  return '<div class="sec-head"><div><div class="eyebrow">Advertisements</div><h2>Local businesses</h2><p>Sponsored listings from businesses in ' + esc(curCountry().name) + '.' + (promoOn() ? ' Advertising is free until ' + esc(promoDate()) + '. Each friend you invite adds 3 free days.' : '') + '</p></div>' + (S.showAd ? '' : '<button class="btn primary big" data-a="adnew">Advertise here</button>') + '</div>' + form + adsHtml + mine + review;
+  return '<div class="sec-head"><div><div class="eyebrow">Advertisements</div><h2>Local businesses</h2><p>Sponsored listings from businesses in ' + esc(curCountry().name) + '. Landlords, agents, property companies and small and medium businesses advertise free.' + (promoOn() ? ' Advertising is free until ' + esc(promoDate()) + '. Each friend you invite adds 3 free days.' : '') + '</p></div>' + (S.showAd ? '' : '<button class="btn primary big" data-a="adnew">Advertise here</button>') + '</div>' + form + adsHtml + mine + review;
 }
 
 
@@ -2896,7 +2926,7 @@ function stripHead(h) { return splitHead(h)[1] || h; }
 function propHub() {
   var parts = splitHead(propSection());
   var tools = toolBtn('ai', ic(I2.star, 24, 2.2), 'Ask AI') + toolBtn('propnew', svg('plus', 22, 2.4), 'List a property') + toolBtn('import', ic(I2.list, 24, 2.2), 'Import listings') + toolBtn('catmap', svg('pin', 22, 2.2), 'On the map', ' data-l="prop"') + toolBtn('pfmap', svg('target', 22, 2.2), 'Search near a pin') + toolBtn('pfquick', ic(I2.house, 24, 2.2), 'Rentals', ' data-t="To let"') + toolBtn('pfquickk', ic(I2.house, 24, 2.2), 'Land', ' data-t="Land"');
-  var body = S.prTab === 'owners' ? '<div class="pgrid"><div class="promo mustard"><span class="k">For owners &amp; agents</span><h3>List free. Keep 100% of your fees.</h3><p>Post one property or import many at once. Your photos and text stay yours — all rights reserved.</p><button class="btn dk" data-a="import">Import my listings</button></div><div class="promo dark"><span class="k">Get rated</span><h3>Good service earns stars</h3><p>Clients can rate listings. Clear photos, real prices and quick replies build trust.</p></div><div class="promo dark"><span class="k">Stay safe</span><h3>Never take deposits before a viewing</h3><p>Meet clients at the property. Report fake listings with the Flag button.</p></div></div>'
+  var body = S.prTab === 'owners' ? '<div class="pgrid"><div class="promo mustard"><span class="k">For owners &amp; agents</span><h3>List free. Keep 100% of your fees.</h3><p>Post one property or import many at once. Your photos and text stay yours — all rights reserved.</p><button class="btn dk" data-a="import">Import my listings</button></div><div class="promo teal"><span class="k">Free advertising</span><h3>Property businesses advertise free</h3><p>Landlords, agents, property companies and small and medium businesses get a free business ad on Find &amp; Found — no fees, no commission.</p><button class="btn dk" data-a="propad">Advertise free</button></div><div class="promo dark"><span class="k">Get rated</span><h3>Good service earns stars</h3><p>Clients can rate listings. Clear photos, real prices and quick replies build trust.</p></div><div class="promo dark"><span class="k">Stay safe</span><h3>Never take deposits before a viewing</h3><p>Meet clients at the property. Report fake listings with the Flag button.</p></div></div>'
     : S.prTab === 'clients' ? '<div class="pgrid"><div class="promo teal"><span class="k">For clients</span><h3>Contact owners and agents free' + (promoOn() ? ' until ' + esc(promoDate()) : '') + '</h3><p>Message the owner or agent from any listing. Sort by price, filter by type, or search near a place or your pin.</p></div><div class="promo dark"><span class="k">View before you pay</span><h3>Never send money to hold a viewing</h3><p>Check the property and the papers first. Flag anything that looks fake.</p></div><div class="promo dark"><span class="k">Rate what you see</span><h3>Help others choose</h3><p>Leave stars on listings after a viewing.</p></div></div>'
     : parts[1];
   return hub(parts[0], tools, tabsHtml('prTab', [['list', 'Listings'], ['owners', 'Owners & agents'], ['clients', 'Clients']]), body, headBanner('prop', [['House', '', 'Houses', 'data-a="pfquickk" data-t="House"'], ['Apartment', '', 'Apartments', 'data-a="pfquickk" data-t="Apartment"'], ['Land', '', 'Land', 'data-a="pfquickk" data-t="Land"'], ['Shop', '', 'Shops', 'data-a="pfquickk" data-t="Shop"']]), areaBar('prop'));
@@ -2921,6 +2951,14 @@ XCLICK.hubtab = function (b) { S[b.getAttribute('data-k')] = b.getAttribute('dat
 XCLICK.hubhelp = function () { hubTo('alTab', 'help', 'alerts'); };
 XCLICK.gohelp = function () { hubTo('alTab', 'help', 'alerts'); };
 XCLICK.hubinvite = function () { hubTo('adTab', 'support', 'invite'); };
+XMODAL.happy = function (m, head) {
+  var site = (window.FFAuth ? location.origin + location.pathname : ARTIFACT_URL), msg = 'I got my lost item back with Find & Found – free lost & found, property and safety alerts near you: ' + site, play = siteCfg.playUrl || '';
+  return head('Glad it’s back with its owner!', 'Two taps help the next person find their things.') +
+    '<div class="stack"><a class="btn primary" href="https://wa.me/?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener">Share on WhatsApp</a>' +
+    (play ? '<a class="btn" href="' + esc(play) + '" target="_blank" rel="noopener">Rate Find &amp; Found on Google Play</a>' : '') +
+    '<button class="btn" data-a="mclose">Not now</button><p class="small muted">Only rate us if you’re happy with the app. We never pay or reward people for reviews.</p></div>';
+};
+XCLICK.propad = function () { S.ad = Object.assign({}, S.ad || {}, { cat: 'Property' }); S.showAd = true; hubTo('adTab', 'ads'); renderSections(); };
 XCLICK.hubdonate = function () { hubTo('adTab', 'support', 'donate'); var d = $('donate'); if (d) { d.classList.add('flash'); setTimeout(function () { d.classList.remove('flash'); }, 1600); } };
 XCLICK.helpnew = function () { S.alTab = 'help'; S.helpForm = { type: S.helpType || 'police' }; renderHubs(); scrollToId('help'); };
 XCLICK.pfquick = function (b) { S.prTab = 'list'; S.pf.type = b.getAttribute('data-t'); S.pf.kind = 'all'; renderHubs(); };
@@ -3216,6 +3254,16 @@ function aiVoice() {
 if (window.FFAuth) document.documentElement.classList.add('noai');
 XCLICK.ai = function () { openAi(); };
 XCLICK.ailens = function () { openAi({ lens: true }); };
+// Google: live maps, news and lens, opened in Google (no keys needed)
+function gq(u) { return '<a href="' + esc(u) + '" target="_blank" rel="noopener">'; }
+function googleRow() {
+  var q = String(S.query || '').trim(); if (!S.showSug || !q || /^https?:/i.test(q)) return '';
+  var c = curCountry(), hl = S.lang || 'en', where = q.toLowerCase().indexOf(c.name.toLowerCase()) >= 0 ? q : q + ' ' + c.name;
+  return '<div class="gsearch" aria-label="Search on Google">' + gq('https://www.google.com/maps/search/' + encodeURIComponent(where)) + 'Google Maps ↗</a>' +
+    gq('https://news.google.com/search?q=' + encodeURIComponent(where) + '&hl=' + hl + '&gl=' + c.cc) + 'Google News ↗</a>' +
+    gq('https://www.google.com/search?q=' + encodeURIComponent(where) + '&hl=' + hl) + 'Google ↗</a></div>';
+}
+XCLICK.glens = function () { try { window.open('https://lens.google.com/', '_blank', 'noopener'); } catch (e) {} };
 XCLICK.aimic = function () { if (!S.modal || S.modal.type !== 'ai') openAi({ voice: true }); else aiVoice(); };
 XCLICK.aiq = function (b) { aiSend(b.getAttribute('data-q')); };
 XCLICK.aiclear = function () { S.ai = { msgs: [], busy: false, img: null, imgUrl: '' }; renderModal(); };
@@ -3617,7 +3665,7 @@ document.addEventListener('click', function (e) {
       break;
     case 'msg': var r2 = itemById(S.selId); if (r2) openThreadFor(r2); break;
     case 'thread': toHero(); openThread(b.getAttribute('data-id')); break;
-    case 'resolve': if (db && S.selId) { var it = itemById(S.selId); db.doc((isListing(it) ? 'listings/' : 'reports/') + S.selId).update(isListing(it) ? { status: 'closed', closedAt: Date.now() } : { status: 'resolved', resolvedAt: Date.now() }).then(function () { toast(isListing(it) ? 'Marked as taken.' : 'Marked as returned.'); }, function (er) { dbErr(er, 'that change'); }); } break;
+    case 'resolve': if (db && S.selId) { var it = itemById(S.selId); db.doc((isListing(it) ? 'listings/' : 'reports/') + S.selId).update(isListing(it) ? { status: 'closed', closedAt: Date.now() } : { status: 'resolved', resolvedAt: Date.now() }).then(function () { toast(isListing(it) ? 'Marked as taken.' : 'Marked as returned.'); if (!isListing(it)) setTimeout(function () { openModal('happy', {}); }, 600); }, function (er) { dbErr(er, 'that change'); }); } break;
     case 'del': S.delConfirm = true; renderUI(); break;
     case 'delno': S.delConfirm = false; renderUI(); break;
     case 'delyes': var it2 = itemById(S.selId), id = S.selId; if (db && it2) { db.doc((isListing(it2) ? 'listings/' : 'reports/') + id).delete().then(function () { toast('Deleted.'); S.selId = null; go('map'); }, function (er) { dbErr(er, 'that change'); }); } else { reports = reports.filter(function (x) { return x.id !== id; }); listings = listings.filter(function (x) { return x.id !== id; }); S.selId = null; go('map'); } break;

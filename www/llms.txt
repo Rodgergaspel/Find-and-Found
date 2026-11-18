@@ -1,0 +1,17 @@
+# Find & Found
+
+> Free app and website to report and search lost and found items, list and find property to rent or buy, share community safety alerts, and find the nearest police station, hospital, church, mosque or shelter on a satellite map. Started in Nairobi, Kenya; works worldwide in the local language and currency.
+
+## What people use it for
+- Lost and found: phones, wallets, ID cards, keys, bags, laptops, pets and missing people. Private IMEI and serial numbers are matched without being shown publicly.
+- Property: houses, apartments, land, shops, offices and short stays, sorted from lowest to highest price, by distance from a pin or by place name. Landlords, agents and property companies list free.
+- Safety alerts: thefts, accidents, floods and road blocks, ranked by area, with fact-check and fake/AI flags.
+- Help nearby: police, hospitals, fire stations, churches, mosques and shelters.
+- AI search by photo, voice or description.
+
+## Safety rules
+Never pay to get an item back. Meet in public places. No posts of restricted government or military places. The law of the country where the app is used applies.
+
+## Links
+- Web app: __SITE__
+- Downloads (Android, Windows, iPhone): https://github.com/Rodgergaspel/Find-and-Found/releases/latest
