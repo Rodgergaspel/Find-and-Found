@@ -56,9 +56,45 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: 'dist/*.exe' }
 
+  ios:
+    name: iPhone / iPad app (.ipa, unsigned)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-audit --no-fund
+      - run: npx cap add ios
+      - name: Location and camera permission messages
+        run: |
+          P=ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Find & Found uses your location to show lost items, property and help near you.'" $P
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Find & Found uses the camera for AI Scan and to photograph items you post.'" $P
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Find & Found lets you pick photos to attach to your posts.'" $P
+          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Find & Found uses the microphone for voice search and short alert clips.'" $P
+      - name: App icon
+        run: |
+          npm install --no-save @capacitor/assets@3 --no-audit --no-fund
+          mkdir -p assets && cp resources/icon.png assets/icon.png
+          npx capacitor-assets generate --ios || echo "icon step skipped"
+      - run: npx cap sync ios
+      - name: Build (unsigned)
+        working-directory: ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Package .ipa
+        run: |
+          mkdir -p out/Payload
+          cp -R ios/App/build/Build/Products/Release-iphoneos/App.app out/Payload/
+          cd out && zip -qry FindFound-iOS-unsigned.ipa Payload && rm -rf Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: ios, path: out/FindFound-iOS-unsigned.ipa }
+
   release:
     name: Download page (GitHub Release)
-    needs: [android, windows]
+    needs: [android, windows, ios]
+    if: ${{ !cancelled() && needs.android.result == 'success' && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -71,5 +107,5 @@ jobs:
           body: |
             **Android:** download `FindFound-Android.apk`, open it, and allow "Install from this source" when asked.
             **Windows:** download `FindFound-Setup-…exe` (installs with a Start-menu icon) or `FindFound-Portable-…exe` (runs without installing). If Windows SmartScreen appears, choose *More info → Run anyway*.
-            **iPhone / iPad:** open the website in Safari → Share → *Add to Home Screen*.
+            **iPhone / iPad:** easiest: open the website in Safari → Share → *Add to Home Screen*. Or install `FindFound-iOS-unsigned.ipa` with Sideloadly or AltStore using your Apple ID (free Apple IDs must re-install every 7 days). App Store version coming.
           files: out/*
