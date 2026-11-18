@@ -3436,16 +3436,19 @@ XMODAL.laws = function (m, head) {
 XCLICK.laws = function () { openModal('laws'); };
 // ---------- gifts & donations: Stripe (cards, Apple Pay, Google Pay), M-Pesa, other ----------
 // Defaults ship with the app; the owner can change them from the app (settings/site.donations).
-var DONATE_DEFAULT = { stripe: '', mpesaTill: '', mpesaPaybill: '', mpesaAccount: '', mpesaPhone: '', mpesaName: '', other: '', otherLabel: '' };
-function donCfg() { var o = Object.assign({}, DONATE_DEFAULT, siteCfg.donations || {}); ['stripe', 'other'].forEach(function (k) { if (o[k] && !/^https:\/\//i.test(o[k])) o[k] = ''; }); return o; }
+var DONATE_DEFAULT = { stripe: '', mpesaTill: '', mpesaPaybill: '', mpesaAccount: '', mpesaPhone: '', mpesaName: '', other: '', otherLabel: '', btc: '', binanceId: '', binanceLink: '' };
+function donCfg() { var o = Object.assign({}, DONATE_DEFAULT, siteCfg.donations || {}); if (o.btc && !BTC_RE.test(o.btc)) o.btc = ''; if (o.binanceId && !/^\d{5,12}$/.test(o.binanceId)) o.binanceId = ''; ['stripe', 'other', 'binanceLink'].forEach(function (k) { if (o[k] && !/^https:\/\//i.test(o[k])) o[k] = ''; }); return o; }
+var BTC_RE = /^(bc1[02-9ac-hj-np-z]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
 function donHasMpesa(d) { return !!(d.mpesaTill || d.mpesaPaybill || d.mpesaPhone); }
 function donateButtons() {
   var d = donCfg(), b = [];
   if (d.stripe) b.push('<a class="btn primary" href="' + esc(d.stripe) + '" target="_blank" rel="noopener">Card, Apple Pay or Google Pay</a>');
   if (donHasMpesa(d)) b.push('<button class="btn primary" data-a="mpesa">M-Pesa</button>');
+  if (d.btc) b.push('<button class="btn primary" data-a="btcgift">Bitcoin</button>');
+  if (d.binanceLink) b.push('<a class="btn primary" href="' + esc(d.binanceLink) + '" target="_blank" rel="noopener">Binance Pay</a>'); else if (d.binanceId) b.push('<button class="btn primary" data-a="binancegift">Binance Pay</button>');
   if (d.other) b.push('<a class="btn" href="' + esc(d.other) + '" target="_blank" rel="noopener">' + esc(d.otherLabel || 'Other ways to give') + '</a>');
   if (!b.length) return '<p class="small" style="opacity:.85">Gift options are being set up. Check back soon.</p>';
-  return '<div class="row" style="flex-wrap:wrap;gap:8px">' + b.join('') + '</div><p class="small" style="opacity:.85;margin-top:6px">Gifts are voluntary and don’t unlock anything. Payments are handled by Stripe or Safaricom; we never see your card or PIN.</p>';
+  return '<div class="row" style="flex-wrap:wrap;gap:8px">' + b.join('') + '</div><p class="small" style="opacity:.85;margin-top:6px">Gifts are voluntary and don’t unlock anything. Payments are handled by Stripe, Safaricom or Binance; we never see your card, PIN or keys. Crypto gifts can’t be refunded.</p>';
 }
 XMODAL.mpesa = function (m, head) {
   var d = donCfg(), rows = [], copy = function (v) { return ' <button class="btn sm" data-a="copytxt" data-v="' + esc(v) + '">Copy</button>'; };
@@ -3457,7 +3460,7 @@ XMODAL.mpesa = function (m, head) {
 };
 XMODAL.donsetup = function (m, head) {
   var d = donCfg(), f = function (id, label, val, ph, note) { return '<label class="field"><span>' + label + '</span><input id="' + id + '" value="' + esc(val || '') + '" placeholder="' + esc(ph) + '" maxlength="200" autocomplete="off"></label>' + (note ? '<p class="small muted" style="margin-top:-4px">' + note + '</p>' : ''); };
-  return head('Set up gifts & donations', 'Only the owner sees this. Fill in what you have; empty options stay hidden.') +
+  return head('Set up gifts & donations', 'Only the owner sees this. Card, M-Pesa, Bitcoin, Binance and more. Fill in what you have; empty options stay hidden.') +
     '<form id="donsetup" class="stack">' +
     f('ds-stripe', 'Stripe Payment Link', d.stripe, 'https://donate.stripe.com/…', 'Create it in Stripe → Payment Links with “Let customers choose what to pay”. Apple Pay and Google Pay appear on it automatically.') +
     f('ds-till', 'M-Pesa Till number (Buy Goods)', d.mpesaTill, 'e.g. 123456') +
@@ -3465,10 +3468,29 @@ XMODAL.donsetup = function (m, head) {
     f('ds-acct', 'Paybill account', d.mpesaAccount, 'e.g. GIFT') +
     f('ds-phone', 'M-Pesa phone (Send Money)', d.mpesaPhone, 'e.g. 07XX XXX XXX', 'Shown to everyone. A Till or Paybill keeps your personal number private.') +
     f('ds-name', 'Name shown on M-Pesa', d.mpesaName, 'e.g. INTECHS COMPUTER GARAGE') +
+    f('ds-btc', 'Bitcoin address', d.btc, 'bc1…', 'Use a wallet you control. People see this address publicly.') +
+    f('ds-bnid', 'Binance Pay ID', d.binanceId, 'e.g. 123456789', 'Binance app → Pay → your Pay ID.') +
+    f('ds-bnlink', 'Binance Pay link (optional)', d.binanceLink, 'https://…', 'From Binance Pay → Receive → share link.') +
     f('ds-other', 'Other link (PayPal, Paystack, Buy Me a Coffee…)', d.other, 'https://…') +
     f('ds-olabel', 'Button text for the other link', d.otherLabel, 'e.g. PayPal') +
     '<button class="btn primary" type="submit">Save</button></form>';
 };
+XMODAL.btcgift = function (m, head) {
+  var d = donCfg();
+  setTimeout(function () { var box = $('btcqr'); if (!box) return; if (!window.QRCode) { box.innerHTML = ''; return; } box.innerHTML = ''; try { new QRCode(box, { text: 'bitcoin:' + d.btc, width: 400, height: 400, colorDark: '#10262B', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.M }); } catch (e) {} }, 0);
+  return head('Gift with Bitcoin', 'Scan with any Bitcoin wallet, or copy the address.') +
+    '<div class="laws"><div class="qrbox" id="btcqr" style="background:#fff;padding:12px;border-radius:12px;width:max-content"></div>' +
+    '<p class="mono" translate="no" style="word-break:break-all">' + esc(d.btc) + '</p><p><button class="btn" data-a="copytxt" data-v="' + esc(d.btc) + '">Copy address</button></p>' +
+    '<ul class="appsteps small"><li>Send <b>BTC on the Bitcoin network</b> only. Coins sent on another network (BEP20, TRC20…) are lost.</li><li>Check the first and last characters after pasting.</li><li>Crypto payments can’t be reversed or refunded.</li></ul></div>';
+};
+XMODAL.binancegift = function (m, head) {
+  var d = donCfg();
+  return head('Gift with Binance Pay', 'Free and instant between Binance users.') +
+    '<div class="laws"><ol class="appsteps small"><li>Open the Binance app → <b>Pay</b> → <b>Send</b>.</li><li>Choose <b>Pay ID</b> and enter <b translate="no">' + esc(d.binanceId) + '</b> <button class="btn sm" data-a="copytxt" data-v="' + esc(d.binanceId) + '">Copy</button></li><li>Pick any coin and amount, check the name, then confirm.</li></ol>' +
+    '<p class="small muted">Crypto payments can’t be reversed. We will never message you asking for crypto.</p></div>';
+};
+XCLICK.btcgift = function () { openModal('btcgift', {}); };
+XCLICK.binancegift = function () { openModal('binancegift', {}); };
 XCLICK.mpesa = function () { openModal('mpesa', {}); };
 XCLICK.donsetup = function () { if (isAdmin) openModal('donsetup', {}); };
 XCLICK.copytxt = function (b) { var t = b && b.getAttribute('data-v') || ''; try { navigator.clipboard.writeText(t).then(function () { toast('Copied.'); }, function () { toast(t); }); } catch (e) { toast(t); } };
@@ -3483,6 +3505,7 @@ XMODAL.getapp = function (m, head) {
     '<p class="small muted">If Windows shows “Windows protected your PC”, click More info → Run anyway. The app is new and not yet code-signed.</p>' +
     '<h3' + (ios ? ' style="color:var(--brand,#1d4ed8)"' : '') + '>iPhone and iPad</h3>' +
     '<ol class="appsteps small"><li>Open the Find & Found website in <b>Safari</b>.</li><li>Tap the Share button, then <b>Add to Home Screen</b>.</li><li>It opens full screen like a normal app. An App Store version is coming.</li></ol>' +
+    '<p class="small"><b>Advanced:</b> <a href="' + R + 'FindFound-iOS-unsigned.ipa" target="_blank" rel="noopener">download the iPhone app file (.ipa)</a> and install it from a computer with Sideloadly or AltStore using your Apple ID. A free Apple ID must reinstall it every 7 days.</p>' +
     '<h3>Web</h3><p class="small">Works in any browser on any phone or computer, nothing to install. On Android or a computer, use the browser menu → <b>Install app</b> to add it to your home screen.</p>' +
     '<p class="small muted">Only download Find & Found from this page. We never ask for payment to install.</p></div>';
 };
@@ -3631,7 +3654,9 @@ document.addEventListener('submit', function (e) {
   if (id === 'pfloc') { propLocSearch(); return; }
   if (id === 'rateform') { var rv = parseFloat((($('rate-in') || {}).value || '').replace(/[^\d.]/g, '')); if (!(rv > 1)) { toast('Enter KSh per US$, e.g. 129.9'); return; } if (db && isAdmin) db.doc('settings/site').update({ kesRate: rv }).then(function () { toast('Rate saved.'); }, function (er) { dbErr(er, 'the rate'); }); else { siteCfg.kesRate = rv; renderSections(); } return; }
   if (id === 'cmtform') { submitComment(); return; }
-  if (id === 'donsetup') { var gv = function (i) { return ((($(i) || {}).value) || '').trim().slice(0, 200); }; var dn = { stripe: gv('ds-stripe'), mpesaTill: gv('ds-till').replace(/\s/g, ''), mpesaPaybill: gv('ds-paybill').replace(/\s/g, ''), mpesaAccount: gv('ds-acct'), mpesaPhone: gv('ds-phone'), mpesaName: gv('ds-name'), other: gv('ds-other'), otherLabel: gv('ds-olabel') };
+  if (id === 'donsetup') { var gv = function (i) { return ((($(i) || {}).value) || '').trim().slice(0, 200); }; var dn = { stripe: gv('ds-stripe'), mpesaTill: gv('ds-till').replace(/\s/g, ''), mpesaPaybill: gv('ds-paybill').replace(/\s/g, ''), mpesaAccount: gv('ds-acct'), mpesaPhone: gv('ds-phone'), mpesaName: gv('ds-name'), other: gv('ds-other'), otherLabel: gv('ds-olabel'), btc: gv('ds-btc').replace(/\s/g, ''), binanceId: gv('ds-bnid').replace(/\D/g, ''), binanceLink: gv('ds-bnlink') };
+    if (dn.btc && !BTC_RE.test(dn.btc)) { toast('That doesn’t look like a Bitcoin address.'); return; }
+    if (dn.binanceLink && !/^https:\/\//i.test(dn.binanceLink)) { toast('Links must start with https://'); return; }
     if ((dn.stripe && !/^https:\/\//i.test(dn.stripe)) || (dn.other && !/^https:\/\//i.test(dn.other))) { toast('Links must start with https://'); return; }
     if (db && isAdmin) db.doc('settings/site').update({ donations: dn }).then(function () { siteCfg.donations = dn; toast('Gift options saved.'); closeModal(); renderExtra(); }, function (er) { dbErr(er, 'the gift options'); }); return; }
   if (id === 'donform') { var dv = (($('don-in') || {}).value || '').trim().slice(0, 300); if (db && isAdmin) db.doc('settings/site').update({ donate: dv }).then(function () { toast('Donation details saved.'); }, function (er) { dbErr(er, 'the donation details'); }); return; }
