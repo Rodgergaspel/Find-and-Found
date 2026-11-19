@@ -97,7 +97,7 @@ a{color:var(--accent)}
 .htab:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 #regions{display:block}
 #app{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;user-select:none;-webkit-user-select:none;background:var(--navy)}
-#sat{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:auto}
+#sat,#tiles{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:auto}#tiles{pointer-events:none}.hbanner .hb img.banner{width:100%;height:100%;object-fit:cover;display:block}
 #map-svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
 #map-svg.cross{cursor:crosshair}#map-svg.grab{cursor:grab}
 .m-bg{fill:var(--map)}.m-park{fill:var(--park)}.m-water{fill:none;stroke:var(--water);stroke-linecap:round;stroke-linejoin:round}
@@ -629,6 +629,7 @@ span.star{cursor:default;min-height:0;min-width:0;font-size:16px}
   <div class="herotabs" role="tablist" aria-label="Map views"><button class="htab on" role="tab" aria-selected="true" data-a="view" data-v="sat">Satellite search</button><button class="htab" role="tab" aria-selected="false" data-a="view" data-v="regions">Region explorer · county, constituency, ward</button></div>
   <div id="app" class="sat">
     <canvas id="sat" aria-hidden="true"></canvas>
+    <canvas id="tiles" aria-hidden="true"></canvas>
     <svg id="map-svg" role="img" aria-label="Satellite globe and map with your search circle and reports">
       <rect class="m-bg" id="m-bg" x="0" y="0" width="100%" height="100%"></rect>
       <g id="m-layer">
@@ -1453,6 +1454,79 @@ function renderSat(alpha) {
   }
 }
 
+// ---------- real map tiles: Esri World Imagery (satellite) and World Street Map ----------
+// Loaded straight from Esri's free tile service. Where images from other sites are blocked,
+// the app keeps the NASA globe and the drawn street map instead.
+var tileEl = $('tiles'), tileCtx = tileEl ? tileEl.getContext('2d') : null;
+var TL = { ok: false, fails: 0, cache: {}, keys: [], raf: 0, credit: '' };
+var ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+function tileUrl(layer, z, x, y) { return ESRI + layer + '/MapServer/tile/' + z + '/' + y + '/' + x; }
+function tileGet(layer, z, x, y) {
+  var k = layer + '/' + z + '/' + x + '/' + y, t = TL.cache[k];
+  if (t) return t;
+  if (!TL.ok && TL.fails > 6) return null;
+  t = TL.cache[k] = { img: new Image(), ready: false };
+  t.img.crossOrigin = 'anonymous'; t.img.decoding = 'async';
+  t.img.onload = function () { t.ready = true; if (!TL.ok) { TL.ok = true; var c = $('credit'); if (c) c.hidden = false; } tileRedraw(); };
+  t.img.onerror = function () { TL.fails++; };
+  t.img.src = tileUrl(layer, z, x, y);
+  TL.keys.push(k);
+  if (TL.keys.length > 600) { var old = TL.keys.splice(0, 150); old.forEach(function (o) { delete TL.cache[o]; }); }
+  return t;
+}
+function tileRedraw() { if (TL.raf) return; TL.raf = requestAnimationFrame(function () { TL.raf = 0; satDirty = true; draw(); }); }
+function lon2tx(lon, n) { return (lon + 180) / 360 * n; }
+function lat2ty(lat, n) { var r = Math.max(-85.05, Math.min(85.05, lat)) * D2R; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n; }
+function ty2lat(y, n) { return Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) / D2R; }
+function tx2lon(x, n) { return x / n * 360 - 180; }
+function drawTileLayer(layer, z, x0, x1, y0, y1, dpr, maxZ) {
+  var n = Math.pow(2, z);
+  for (var ty = y0; ty <= y1; ty++) for (var tx = x0; tx <= x1; tx++) {
+    var wx = ((tx % n) + n) % n;
+    var a = proj(ty2lat(ty, n), tx2lon(tx, n)), b = proj(ty2lat(ty + 1, n), tx2lon(tx + 1, n));
+    if (a.z <= 0 && b.z <= 0) continue;
+    var dx = a.x * dpr, dy = a.y * dpr, dw = (b.x - a.x) * dpr, dh = (b.y - a.y) * dpr;
+    if (dw <= 0 || dh <= 0) continue;
+    var t = tileGet(layer, z, wx, ty);
+    if (t && t.ready) { tileCtx.drawImage(t.img, dx, dy, dw + 0.6, dh + 0.6); continue; }
+    // not loaded yet: stretch the nearest loaded parent tile so there are no holes
+    for (var up = 1; up <= 5 && z - up >= 1; up++) {
+      var f = Math.pow(2, up), pz = z - up, px = Math.floor(wx / f), py = Math.floor(ty / f);
+      var p = TL.cache[layer + '/' + pz + '/' + px + '/' + py];
+      if (p && p.ready) { var s = 256 / f; tileCtx.drawImage(p.img, (wx - px * f) * s, (ty - py * f) * s, s, s, dx, dy, dw + 0.6, dh + 0.6); break; }
+    }
+  }
+}
+function renderTiles(alpha, sat) {
+  if (!tileCtx) return;
+  var dpr = Math.min(2, window.devicePixelRatio || 1), W = G.W, H = G.H, cw = Math.round(W * dpr), ch = Math.round(H * dpr);
+  if (tileEl.width !== cw || tileEl.height !== ch) { tileEl.width = cw; tileEl.height = ch; }
+  tileEl.style.opacity = alpha;
+  tileCtx.clearRect(0, 0, cw, ch);
+  if (alpha <= 0.01 || (!TL.ok && TL.fails > 6)) return;
+  var pts = [[0, 0], [W / 2, 0], [W, 0], [0, H / 2], [W, H / 2], [0, H], [W / 2, H], [W, H], [W / 2, H / 2]], la0 = 90, la1 = -90, lo0 = 999, lo1 = -999, any = false;
+  pts.forEach(function (q) { var g = unproj(q[0], q[1]); if (!g) return; any = true; la0 = Math.min(la0, g.lat); la1 = Math.max(la1, g.lat); lo0 = Math.min(lo0, g.lon); lo1 = Math.max(lo1, g.lon); });
+  if (!any) return;
+  if (lo1 - lo0 > 180) { lo0 = -180; lo1 = 180; }
+  var cosl = Math.max(0.05, Math.cos(cam.lat * D2R));
+  var z = Math.round(Math.log(2 * Math.PI * cam.R * cosl * dpr / 256) / Math.LN2), maxZ = sat ? 19 : 19;
+  z = Math.max(2, Math.min(maxZ, z));
+  var x0, x1, y0, y1, n;
+  for (;;) {
+    n = Math.pow(2, z);
+    x0 = Math.floor(lon2tx(lo0, n)); x1 = Math.floor(lon2tx(lo1, n)); y0 = Math.max(0, Math.floor(lat2ty(la1, n))); y1 = Math.min(n - 1, Math.floor(lat2ty(la0, n)));
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 90 || z <= 2) break;
+    z--;
+  }
+  if (sat) {
+    drawTileLayer('World_Imagery', z, x0, x1, y0, y1, dpr);
+    if (z >= 11) drawTileLayer('Reference/World_Transportation', z, x0, x1, y0, y1, dpr);
+    if (z >= 5) drawTileLayer('Reference/World_Boundaries_and_Places', z, x0, x1, y0, y1, dpr);
+  } else drawTileLayer('World_Street_Map', z, x0, x1, y0, y1, dpr);
+  var cr = sat ? 'Imagery © Esri, Maxar, Earthstar Geographics · NASA Blue Marble' : 'Map © Esri, HERE, Garmin, OpenStreetMap contributors';
+  if (TL.ok && cr !== TL.credit) { TL.credit = cr; var c = $('credit'); if (c) { c.textContent = cr; c.hidden = false; } }
+}
+
 // ---------- draw ----------
 function openReports() { return reports.filter(function (r) { return r.status !== 'resolved'; }); }
 function openListings() { return listings.filter(function (r) { return r.status !== 'closed'; }); }
@@ -1466,10 +1540,12 @@ function draw() {
   var globeO = sat && TEX ? 0 : 1 - smooth(R, 1800, 7000);
   var mapO = sat ? smooth(R, 4500, 13000) : smooth(R, 2600, 12000);
   var linesO = 1 - smooth(R, 12000, 45000), kenyaO = smooth(R, 380, 1100) * (1 - smooth(R, 20000, 70000)) * 0.9;
+  var tileO = TL.ok || TL.fails <= 6 ? (sat ? smooth(R, 2800, 7000) : mapO) : 0;
   if (satDirty) { renderSat(satO); satDirty = false; }
+  renderTiles(tileO, sat);
   attr(E['s-atmo'], { cx: o.x, cy: o.y, r: R + 8, opacity: satO > 0.01 && R < 2000 ? 1 : 0 });
   if (mapO > 0.01) ensureMap();
-  attr(E['m-bg'], { opacity: mapO }); attr(E['m-layer'], { opacity: mapO });
+  attr(E['m-bg'], { opacity: TL.ok ? 0 : mapO }); attr(E['m-layer'], { opacity: TL.ok ? 0 : mapO });
   if (mapO > 0.01 && map) {
     var wMaj = Math.max(1.5, Math.min(9, 0.022 * pxKm)), wMin = Math.max(0.6, Math.min(4.5, 0.009 * pxKm)), maj = pathOf(map.major);
     attr(E['m-major'], { d: maj, 'stroke-width': wMaj.toFixed(2) }); attr(E['m-case'], { d: maj, 'stroke-width': (wMaj + 2).toFixed(2) });
@@ -2528,6 +2604,7 @@ function setLang(l) {
 var mediaCache = {}, mediaLoading = {};
 function blobSrc(id) {
   if (!id) return '';
+  if (/^https?:/.test(String(id))) return id;
   if (String(id).indexOf('m:') !== 0) return '/_blob/' + id;
   if (mediaCache[id]) return mediaCache[id];
   if (!mediaLoading[id] && db) { mediaLoading[id] = 1; db.doc('media/' + id.slice(2)).get().then(function (d) { if (d.exists && /^data:image\/(jpeg|png|webp);base64,/.test(d.data().data || '')) { mediaCache[id] = d.data().data; scheduleUI(); scheduleSections(); renderExtra(); } }, function () {}); }
@@ -3206,7 +3283,7 @@ function bannerSvg(theme, scene, cat) {
 XCLICK.lfcat = function (b) { var v = b.getAttribute('data-v'); S.lfTab = 'reports'; S.lf.cat = CATS.indexOf(v) >= 0 ? (S.lf.cat === v ? 'all' : v) : 'all'; renderSections(); toast(S.lf.cat === 'all' ? 'Showing all categories.' : 'Showing ' + v + ' reports.'); };
 XCLICK.helpshelter = function () { S.helpType = 'shelter'; hubTo('alTab', 'help', 'alerts'); };
 function headBanner(theme, scenes, title) {
-  return '<div class="hbanner">' + scenes.map(function (s) { return '<button type="button" class="hb" ' + (s[3] || '') + ' aria-label="' + esc(s[2]) + '">' + bannerSvg(theme, s[0], s[1]) + '<span>' + esc(s[2]) + '</span></button>'; }).join('') + '</div>';
+  return '<div class="hbanner">' + scenes.map(function (s) { return '<button type="button" class="hb" ' + (s[3] || '') + ' aria-label="' + esc(s[2]) + '">' + (PHOTO_OK && BANNER_PH[s[2]] ? '<img class="banner" src="' + esc(uph(BANNER_PH[s[2]])) + '" alt="" loading="lazy" onerror="this.remove()">' : bannerSvg(theme, s[0], s[1])) + '<span>' + esc(s[2]) + '</span></button>'; }).join('') + '</div>';
 }
 
 // ---------- Ask AI: search by photo (lens), voice or words; Claude chats and finds answers in the app ----------
@@ -3467,14 +3544,22 @@ var GX = { key: '', reports: [], listings: [], alerts: [] };
 var GX_LF = [['lost', 'Phone', 'Black smartphone with a cracked screen'], ['found', 'Keys', 'Bunch of house keys on a blue lanyard'], ['lost', 'Wallet', 'Brown leather wallet with bank cards'], ['found', 'ID card', 'Driving licence found at the bus stop'], ['lost', 'Pet', 'Grey cat with a red collar'], ['found', 'Backpack', 'Black laptop backpack left on a bench'], ['lost', 'Laptop', 'Silver laptop in a grey sleeve'], ['found', 'Glasses', 'Prescription glasses in a black case'], ['lost', 'Keys', 'Car key with a small torch keyring'], ['found', 'Phone', 'Phone in a pink case found in a taxi'], ['lost', 'Umbrella', 'Large green umbrella with wooden handle'], ['found', 'Pet', 'Friendly brown dog, no collar']];
 var GX_PR = [['To let', 'Apartment', '2-bedroom flat near the station', 1800, 'per month', '2'], ['To let', 'Room', 'Furnished room, bills included', 700, 'per month', 'Studio'], ['For sale', 'House', '3-bedroom family house with garden', 450000, 'asking', '3'], ['For sale', 'Land', 'Building plot with planning permission', 120000, 'asking', 'n/a'], ['To let', 'Shop', 'High-street shop unit', 2500, 'per month', 'n/a'], ['Short stay', 'Apartment', 'Modern studio for short stays', 90, 'per night', 'Studio'], ['To let', 'House', '4-bedroom house with parking', 3200, 'per month', '4'], ['For sale', 'Apartment', '1-bedroom apartment with balcony', 220000, 'asking', '1'], ['To let', 'Office', 'Small office with meeting room', 1500, 'per month', 'n/a'], ['For sale', 'Land', 'Farm land with water access', 60000, 'asking', 'n/a'], ['Short stay', 'House', 'Holiday cottage, sleeps 6', 160, 'per night', '3'], ['To let', 'Apartment', 'Studio flat close to shops', 1100, 'per month', 'Studio']];
 var GX_AL = [['Theft', 'high', 'Bags snatched near the market after dark.'], ['Road block', 'low', 'Road works, one lane closed this week.'], ['Flooding', 'medium', 'Underpass floods after heavy rain.'], ['Accident', 'medium', 'Collision at the roundabout, traffic slow.'], ['Mugging', 'high', 'Two people robbed near the footbridge at night.'], ['Power outage', 'low', 'Power cut across the estate since morning.']];
+// ---------- real photos (Unsplash, free licence) for example posts and section banners ----------
+// Shown only where the browser can load them; otherwise the drawn pictures stay.
+function uph(id) { return 'https://images.unsplash.com/' + id + '?auto=format&fit=crop&w=640&q=70'; }
+var PHOTO_OK = false;
+(function () { var im = new Image(); im.onload = function () { PHOTO_OK = true; GX.key = ''; try { gxApply(); } catch (e) {} scheduleSections(); }; im.src = uph('photo-1579014134953-1580d7f123f3').replace('w=640', 'w=8'); })();
+var GX_LF_PH = ['photo-1706972612595-aa53b400ee80', 'flagged/photo-1564767609342-620cb19b2357', 'photo-1614330315526-166f2d71e544', 'photo-1487637419635-a2a471ff5c7b', 'photo-1489084917528-a57e68a79a1e', 'photo-1553062407-98eeb64c6a62', 'photo-1496181133206-80ce9b88a853', 'photo-1632986636968-04958bfbbf3f', 'photo-1710006548781-eff5670376fa', 'photo-1731391747600-4d0f478b2184', 'photo-1766475973471-e5cca8cfb7ab', 'photo-1562317305-58a17fe2c09e'];
+var GX_PR_PH = ['photo-1515263487990-61b07816b324', 'photo-1502672260266-1c1ef2d93688', 'photo-1480074568708-e7b720bb3f09', 'photo-1599809563132-4b678fb6f611', 'photo-1528698827591-e19ccd7bc23d', 'photo-1522708323590-d24dbb6b0267', 'photo-1570129477492-45c003edd2be', 'photo-1545324418-cc1a3fa10c00', 'photo-1497366811353-6870744d04b2', 'photo-1647893168443-6322905c938b', 'photo-1598228723793-52759bba239c', 'photo-1560448204-e02f11c3d0e2'];
+var BANNER_PH = { 'Phones': 'photo-1706972612595-aa53b400ee80', 'Wallets & IDs': 'photo-1579014134953-1580d7f123f3', 'Keys': 'flagged/photo-1564767609342-620cb19b2357', 'Pets': 'photo-1562317305-58a17fe2c09e', 'Houses': 'photo-1480074568708-e7b720bb3f09', 'Apartments': 'photo-1545324418-cc1a3fa10c00', 'Land': 'photo-1599809563132-4b678fb6f611', 'Shops': 'photo-1777879760931-3a21a9bf42d6', 'Safety alerts': 'photo-1606022831434-91293aebf25a', 'Police & help': 'photo-1563741603582-adf5a8332a73', 'Shelters': 'photo-1604601638406-edc29b54dcf7', 'Services': 'photo-1564540574859-0dfb63985953', 'Your ad here': 'photo-1761850648640-2ee5870ee883' };
 function gxBuild() {
   var cc = focusCC(), f = focusPoint(); if (!cc || !GZ) return;
   var c = curCountry(), cur = FX[c.cur] ? c.cur : 'USD', towns = gxTowns(f, cc, 14), rnd = gxRand(cc + towns[0].name), now = Date.now(), H = 3600000;
   var at = function (i) { var t = towns[i % towns.length]; return { lat: t.lat + (rnd() - 0.5) * 0.012, lon: t.lon + (rnd() - 0.5) * 0.012, place: t.name }; };
   var real = function (arr) { return arr.some(function (r) { return !r.gx && postCC(r) === cc; }); };
   var D = 'This is an example post that shows how Find & Found works here. It is not a real item.';
-  GX.reports = real(reports) ? [] : GX_LF.map(function (x, i) { var p = at(i); return { id: 'gx-' + cc + '-lf' + i, gx: true, example: true, kind: x[0], cat: x[1], title: 'Example · ' + x[2], desc: D, lat: p.lat, lon: p.lon, place: p.place, radius: 300, status: 'open', ownerId: null, photoId: null, cc: cc, createdAt: now - (i * 4 + 2) * H }; });
-  GX.listings = real(listings) ? [] : GX_PR.map(function (x, i) { var p = at(i + 2); return { id: 'gx-' + cc + '-pr' + i, gx: true, example: true, ltype: x[0], pkind: x[1], title: 'Example · ' + x[2], desc: D, price: gxPrice(x[3], cc, cur), cur: cur, period: x[4], beds: x[5], who: i % 2 ? 'Agent' : 'Owner', lat: p.lat, lon: p.lon, place: p.place, status: 'open', ownerId: null, photoId: null, cc: cc, createdAt: now - (i * 7 + 3) * H }; });
+  GX.reports = real(reports) ? [] : GX_LF.map(function (x, i) { var p = at(i); return { id: 'gx-' + cc + '-lf' + i, gx: true, example: true, kind: x[0], cat: x[1], title: 'Example · ' + x[2], desc: D, lat: p.lat, lon: p.lon, place: p.place, radius: 300, status: 'open', ownerId: null, photoId: PHOTO_OK && GX_LF_PH[i] ? uph(GX_LF_PH[i]) : null, cc: cc, createdAt: now - (i * 4 + 2) * H }; });
+  GX.listings = real(listings) ? [] : GX_PR.map(function (x, i) { var p = at(i + 2); return { id: 'gx-' + cc + '-pr' + i, gx: true, example: true, ltype: x[0], pkind: x[1], title: 'Example · ' + x[2], desc: D, price: gxPrice(x[3], cc, cur), cur: cur, period: x[4], beds: x[5], who: i % 2 ? 'Agent' : 'Owner', lat: p.lat, lon: p.lon, place: p.place, status: 'open', ownerId: null, photoId: PHOTO_OK && GX_PR_PH[i] ? uph(GX_PR_PH[i]) : null, cc: cc, createdAt: now - (i * 7 + 3) * H }; });
   GX.alerts = real(alerts) ? [] : GX_AL.map(function (x, i) { var p = at(i + 4); return { id: 'gx-' + cc + '-al' + i, gx: true, example: true, atype: x[0], sev: x[1], desc: 'Example: ' + x[2] + ' Not a real alert.', lat: p.lat, lon: p.lon, place: p.place, radius: 300, confirms: [], ownerId: null, cc: cc, createdAt: now - (i * 9 + 4) * H }; });
 }
 function gxApply() {
@@ -3717,7 +3802,7 @@ document.addEventListener('click', function (e) {
     case 'ungrab': setGrab(false); break;
     case 'zin': zoomBy(2); break;
     case 'zout': zoomBy(0.5); break;
-    case 'style': S.style = S.style === 'sat' ? 'map' : 'sat'; app.classList.toggle('sat', S.style === 'sat'); $('credit').hidden = S.style !== 'sat'; satDirty = true; renderCtrl(); kick(); break;
+    case 'style': S.style = S.style === 'sat' ? 'map' : 'sat'; app.classList.toggle('sat', S.style === 'sat'); $('credit').hidden = !(S.style === 'sat' || TL.ok); satDirty = true; renderCtrl(); kick(); break;
     case 'layer': var l = b.getAttribute('data-l'); S.layers[l] = !S.layers[l]; renderUI(); scheduleSections(); kick(); break;
     case 'back':
       if (S.screen === 'thread') { if (S.threadFrom === 'detail' && S.selId && itemById(S.selId)) go('detail', itemById(S.selId)); else go('inbox'); }
