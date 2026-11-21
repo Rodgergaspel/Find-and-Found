@@ -144,6 +144,8 @@ a{color:var(--accent)}
 .cbtn.on{background:var(--ink);color:var(--panel);border-color:rgba(255,255,255,.4)}
 .cgroup{display:flex;flex-direction:column;border-radius:12px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line)}
 .cgroup .cbtn{border:0;border-radius:0;box-shadow:none}.cgroup .cbtn+.cbtn{border-top:1px solid var(--line)}
+/* phones: keep only My location, SAT/MAP and LIVE on the map so they clear the search card (pinch to zoom) */
+@media (max-width:819px){#ctrl [data-a="pause"],#ctrl .cgroup,#ctrl [data-a="droppin"]{display:none}}
 #credit{position:absolute;right:max(10px,env(safe-area-inset-right,0px));bottom:6px;font-size:10.5px;color:rgba(255,255,255,.8);text-shadow:0 1px 2px rgba(0,0,0,.6);pointer-events:none;z-index:1}
 @media (min-width:820px){
   #col{left:16px;top:16px;bottom:16px;right:auto;width:380px}
@@ -403,6 +405,11 @@ html:root[data-ff-theme="brand"]{--bg:#111C21;--panel:#1A2930;--ink:#F3F6F5;--mu
 .mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .qrbox{background:#fff;border-radius:16px;padding:16px;align-self:center}
 .qrbox img,.qrbox canvas{display:block;width:200px;height:200px}
+.qrbox canvas.sticker{width:200px;height:250px}
+.qrbox.stk{padding:10px;background:#E9EEF6}
+.tagsheet{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--soft)}
+.tagsheet .row{flex-wrap:wrap;gap:6px}
+.tagsheet select{font:inherit;font-size:15px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--field);color:var(--ink);padding:0 8px}
 .reglist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;word-break:break-all;user-select:all;-webkit-user-select:all}
 
@@ -845,6 +852,7 @@ a{color:var(--prop)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+var XCLICK = {}; // button handlers; created first so any part of the app can add to it
 window.FFbootRegions=function(R){
 
 /* What each country calls its first-level division (ISO2). Kenya has full depth. */
@@ -2390,9 +2398,9 @@ function renderModal() {
   } else if (m.type === 'tags') {
     if (!db || !myId) h = head('QR tags', 'Stick a QR tag on your keys, bag or laptop. Whoever finds it scans the code and can message you — without seeing your number.') + '<div class="note">Sign in to make tags.</div>' + (window.FFAuth && FFAuth.configured ? '<button class="btn primary" data-a="signin">Sign in with Google</button>' : '');
     else h = head('QR tags', 'Stick a QR tag on your keys, bag or laptop. Whoever finds it scans the code and can message you — without seeing your number.') +
-      '<form id="tagform" class="row"><input id="tag-in" maxlength="40" placeholder="What is it? e.g. House keys" style="flex:1;min-width:0;font:inherit;font-size:16px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--field);color:var(--ink);padding:0 12px" value="' + esc(m.label || '') + '"><button class="btn primary" type="submit">Make tag</button></form>' +
-      (m.tag ? '<div class="stack" style="align-items:center;gap:10px"><b>' + esc(m.tag.label) + '</b><div class="qrbox" id="qrbox" aria-label="QR code for ' + esc(m.tag.label) + '"></div><span class="mono">' + esc(tagUrl(m.tag.id)) + '</span><div class="row" style="flex-wrap:wrap;justify-content:center"><button class="btn" data-a="tagcopy">Copy link</button>' + (downloadsCap ? '<button class="btn primary" data-a="tagsave">Save QR image</button>' : '') + '</div>' + (downloadsCap ? '' : '<p class="small muted">Take a screenshot to print it.</p>') + '</div>' : '') +
-      (myTags.length ? '<div class="stack" style="gap:6px"><div class="s13 b">Your tags</div>' + myTags.map(function (t) { return '<button class="rowbtn" data-a="tagshow" data-id="' + esc(t.id) + '">' + ic(I2.qr, 20) + '<span class="grow">' + esc(t.label) + '</span><span class="small muted">' + esc(ago(t.createdAt || Date.now())) + '</span></button>'; }).join('') + '</div>' : '');
+      '<form id="tagform" class="row"><input id="tag-in" maxlength="40" placeholder="What is it? e.g. House keys, Laptop, School bag" style="flex:1;min-width:0;font:inherit;font-size:16px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--field);color:var(--ink);padding:0 12px" value="' + esc(m.label || '') + '"><button class="btn primary" type="submit">Make tag</button></form>' +
+      (m.tag ? '<div class="stack" style="align-items:center;gap:10px"><b>' + esc(m.tag.label) + '</b><div class="qrbox stk" id="qrbox" aria-label="QR sticker for ' + esc(m.tag.label) + '"></div><span class="mono">' + esc(tagUrl(m.tag.id)) + '</span><div class="row" style="flex-wrap:wrap;justify-content:center"><button class="btn" data-a="tagcopy">Copy link</button>' + (downloadsCap ? '<button class="btn primary" data-a="tagsave">Save sticker image</button><button class="btn" data-a="tagsheet" data-v="one">Print a sheet of this</button>' : '') + '</div>' + (downloadsCap ? '' : '<p class="small muted">Take a screenshot to print it.</p>') + '</div>' : '') +
+      '<p class="small muted" style="margin:0">Make several at once by separating names with commas.</p>' + (myTags.length && downloadsCap ? tagSheetHtml(m) : '') + (myTags.length ? '<div class="stack" style="gap:6px"><div class="s13 b">Your tags</div>' + myTags.map(function (t) { return '<button class="rowbtn" data-a="tagshow" data-id="' + esc(t.id) + '">' + ic(I2.qr, 20) + '<span class="grow">' + esc(t.label) + '</span><span class="small muted">' + esc(ago(t.createdAt || Date.now())) + '</span></button>'; }).join('') + '</div>' : '');
   } else if (m.type === 'tagfound') {
     var t = m.tag;
     h = head(t ? 'You found: ' + esc(t.label) : 'Tag not found', t ? 'Thank you! The owner registered this tag on Find &amp; Found. Message them to arrange the return — they won’t see your number unless you share it.' : 'This tag may have been removed.') +
@@ -2413,11 +2421,100 @@ function renderModal() {
   if (m.type === 'tags' && m.tag) drawQR(m.tag);
 }
 function tagUrl(id) { return (window.FFAuth ? location.origin + location.pathname : ARTIFACT_URL) + '#tag-' + id; }
+function tagCode(id) { return String(id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase(); }
+function qrCanvas(text, px, lvl) {
+  var d = document.createElement('div');
+  new QRCode(d, { text: text, width: px, height: px, colorDark: '#0B1F4B', colorLight: '#FFFFFF', correctLevel: lvl || QRCode.CorrectLevel.H });
+  return d.querySelector('canvas');
+}
+function rrect(x, a, b, w, h, r) { x.beginPath(); x.moveTo(a + r, b); x.arcTo(a + w, b, a + w, b + h, r); x.arcTo(a + w, b + h, a, b + h, r); x.arcTo(a, b + h, a, b, r); x.arcTo(a, b, a + w, b, r); x.closePath(); }
+function fitText(x, t, maxW, size, weight) { var f = size; do { x.font = weight + ' ' + f + 'px "Plus Jakarta Sans", Arial, sans-serif'; if (x.measureText(t).width <= maxW) break; f -= 1; } while (f > size * 0.55); if (x.measureText(t).width > maxW) { while (t.length > 1 && x.measureText(t + '…').width > maxW) t = t.slice(0, -1); t += '…'; } return t; }
+// One sticker, W px wide and 1.25 W tall: navy band, QR, item name, short code.
+function stickerCanvas(tag, W) {
+  var H = Math.round(W * 1.25), c = document.createElement('canvas'); c.width = W; c.height = H; c.className = 'sticker';
+  var x = c.getContext('2d'), u = W / 100;
+  x.fillStyle = '#FFFFFF'; rrect(x, 0, 0, W, H, 8 * u); x.fill();
+  x.save(); rrect(x, 0, 0, W, H, 8 * u); x.clip();
+  x.fillStyle = '#0B1F4B'; x.fillRect(0, 0, W, 21 * u);
+  x.fillStyle = '#1E9E4A'; x.beginPath(); x.arc(11 * u, 10.5 * u, 5.2 * u, 0, Math.PI * 2); x.fill();
+  x.strokeStyle = '#FFFFFF'; x.lineWidth = 1.4 * u; x.beginPath(); x.arc(10.3 * u, 9.8 * u, 2.4 * u, 0, Math.PI * 2); x.moveTo(12 * u, 11.5 * u); x.lineTo(13.9 * u, 13.4 * u); x.stroke();
+  x.fillStyle = '#FFFFFF'; x.textBaseline = 'middle'; x.textAlign = 'left';
+  x.fillText(fitText(x, 'Find & Found', 76 * u, 9 * u, '800'), 19 * u, 7.8 * u);
+  x.fillStyle = '#C9D6F2'; x.fillText(fitText(x, 'IF FOUND, SCAN TO RETURN', 76 * u, 5.4 * u, '700'), 19 * u, 15 * u);
+  x.restore();
+  var q = qrCanvas(tagUrl(tag.id), 512), qs = 70 * u;
+  x.imageSmoothingEnabled = false; if (q) x.drawImage(q, 15 * u, 28 * u, qs, qs);
+  x.textAlign = 'center'; x.fillStyle = '#0B1F4B';
+  x.fillText(fitText(x, String(tag.label || 'My item'), 88 * u, 8 * u, '800'), W / 2, 107.5 * u);
+  x.fillStyle = '#56637A'; x.fillText(fitText(x, 'Tag ' + tagCode(tag.id) + ' · owner’s number stays private', 92 * u, 4.6 * u, '600'), W / 2, 117 * u);
+  x.strokeStyle = '#C3CFE2'; x.lineWidth = Math.max(1, 0.6 * u); rrect(x, 0.5, 0.5, W - 1, H - 1, 8 * u); x.stroke();
+  return c;
+}
+// Tiny sticker: QR fills it, one thin strip says what it is. Lower error correction keeps each dot bigger.
+function stickerTiny(tag, W) {
+  var H = Math.round(W * 1.2), c = document.createElement('canvas'); c.width = W; c.height = H;
+  var x = c.getContext('2d'), u = W / 100;
+  x.fillStyle = '#FFFFFF'; rrect(x, 0, 0, W, H, 7 * u); x.fill();
+  var q = qrCanvas(tagUrl(tag.id), 512, QRCode.CorrectLevel.M); x.imageSmoothingEnabled = false; if (q) x.drawImage(q, 8 * u, 8 * u, 84 * u, 84 * u);
+  x.save(); rrect(x, 0, 0, W, H, 7 * u); x.clip(); x.fillStyle = '#0B1F4B'; x.fillRect(0, 99 * u, W, 21 * u); x.restore();
+  x.fillStyle = '#FFFFFF'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(fitText(x, 'FIND & FOUND · SCAN', 92 * u, 10 * u, '800'), W / 2, 110 * u);
+  x.strokeStyle = '#C3CFE2'; x.lineWidth = Math.max(1, 0.8 * u); rrect(x, 0.5, 0.5, W - 1, H - 1, 7 * u); x.stroke();
+  return c;
+}
 function drawQR(tag) {
   var box = $('qrbox'); if (!box) return;
   if (!window.QRCode) { box.innerHTML = '<div class="small" style="color:#10262B;max-width:200px">The QR maker didn’t load. Copy the link instead.</div>'; return; }
-  box.innerHTML = ''; try { new QRCode(box, { text: tagUrl(tag.id), width: 400, height: 400, colorDark: '#10262B', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.M }); } catch (e) {}
+  box.innerHTML = ''; try { box.appendChild(stickerCanvas(tag, 800)); } catch (e) { box.innerHTML = '<div class="small" style="color:#10262B;max-width:200px">The sticker couldn’t be drawn. Copy the link instead.</div>'; }
 }
+var STK = { T: [15, 'Tiny · 1.5 cm', 1.2], S: [25, 'Small · 2.5 cm', 1.25], M: [40, 'Medium · 4 cm', 1.25], L: [60, 'Large · 6 cm', 1.25] };
+function tagSheetHtml(m) {
+  var sz = m.sheetSize || 'M', cp = m.sheetCopies || 2;
+  return '<div class="tagsheet"><div class="s13 b">Print stickers on A4</div>' +
+    '<div class="row">' + Object.keys(STK).map(function (k) { return '<button class="chip' + (sz === k ? ' on' : '') + '" data-a="tagsz" data-v="' + k + '">' + STK[k][1] + '</button>'; }).join('') + '</div>' +
+    '<div class="row" style="align-items:center"><label class="small b" for="tag-copies">Copies of each</label><select id="tag-copies">' + [1, 2, 3, 4, 6, 8, 10, 20].map(function (n) { return '<option' + (n === cp ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>' +
+    '<button class="btn primary" data-a="tagsheet" data-v="all"' + (m.sheetBusy ? ' disabled' : '') + '>' + (m.sheetBusy ? 'Making PDF…' : 'Sheet of all my tags (' + myTags.length + ')') + '</button></div>' +
+    '<p class="small muted" style="margin:0">Print at 100% (actual size) on A4 sticker paper or plain paper, then cut along the grey lines. Tiny stickers show only the code: print one first and test-scan it with a phone before printing many. Cover stickers on keys and bags with clear tape so the code lasts.</p></div>';
+}
+var jsPdfLoading = null;
+function loadJsPdf() {
+  if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if (!jsPdfLoading) jsPdfLoading = new Promise(function (ok, no) { var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload = function () { window.jspdf && window.jspdf.jsPDF ? ok(window.jspdf.jsPDF) : no(); }; sc.onerror = function () { jsPdfLoading = null; no(); }; document.head.appendChild(sc); });
+  return jsPdfLoading;
+}
+function makeTagSheet(tags, copies, sizeKey, fillPage) {
+  var tiny = sizeKey === 'T', wmm = STK[sizeKey][0], hmm = wmm * STK[sizeKey][2], gap = tiny ? 3 : 4, mx = 10, my = 12, cols = Math.max(1, Math.floor((210 - 2 * mx + gap) / (wmm + gap))), rows = Math.max(1, Math.floor((297 - 2 * my + gap) / (hmm + gap)));
+  var list = [];
+  if (fillPage) for (var f = 0; f < cols * rows; f++) list.push(tags[0]);
+  else tags.forEach(function (t) { for (var k = 0; k < copies; k++) list.push(t); });
+  var px = Math.round(wmm / 25.4 * 300), cache = {};
+  return loadJsPdf().then(function (JsPDF) {
+    var doc = new JsPDF({ unit: 'mm', format: 'a4' }), per = cols * rows, ox = (210 - (cols * wmm + (cols - 1) * gap)) / 2;
+    list.forEach(function (t, i) {
+      if (i && i % per === 0) doc.addPage();
+      var j = i % per, cx = ox + (j % cols) * (wmm + gap), cy = my + Math.floor(j / cols) * (hmm + gap);
+      if (!cache[t.id]) cache[t.id] = (tiny ? stickerTiny(t, Math.max(px, 600)) : stickerCanvas(t, px)).toDataURL('image/png');
+      doc.setDrawColor(190, 198, 210); doc.setLineWidth(0.2); doc.setLineDashPattern([1.2, 1.2], 0); doc.rect(cx - 0.8, cy - 0.8, wmm + 1.6, hmm + 1.6);
+      doc.addImage(cache[t.id], 'PNG', cx, cy, wmm, hmm, 'stk' + t.id, 'FAST');
+    });
+    return doc.output('blob');
+  });
+}
+XCLICK.tagsz = function (b) { if (S.modal) { S.modal.sheetSize = b.getAttribute('data-v'); renderModal(); } };
+XCLICK.tagsave = function () {
+  var tg = S.modal && S.modal.tag; if (!tg || !downloadsCap || !window.QRCode) return;
+  stickerCanvas(tg, 1200).toBlob(function (blob) { downloadsCap.save({ filename: 'findfound-sticker-' + tg.label.replace(/[^\w-]+/g, '-').toLowerCase() + '.png', data: blob }).then(function (r) { if (r && r.status === 'saved') toast('Sticker saved.'); }, function () { toast('The sticker wasn’t saved.'); }); }, 'image/png');
+};
+XCLICK.tagsheet = function (b) {
+  var m = S.modal; if (!m || m.sheetBusy || !downloadsCap) return;
+  if (!window.QRCode) { toast('The QR maker didn’t load. Try again in a moment.'); return; }
+  var one = b.getAttribute('data-v') === 'one', tags = one ? (m.tag ? [m.tag] : []) : myTags.slice(0, 50);
+  if (!tags.length) { toast('Make a tag first.'); return; }
+  var sel = $('tag-copies'); m.sheetCopies = sel ? parseInt(sel.value, 10) || 2 : (m.sheetCopies || 2);
+  var sz = m.sheetSize || 'M'; m.sheetBusy = true; renderModal();
+  makeTagSheet(tags, m.sheetCopies, sz, one).then(function (blob) {
+    return downloadsCap.save({ filename: 'findfound-stickers-' + (one ? tags[0].label.replace(/[^\w-]+/g, '-').toLowerCase() : 'all') + '-' + sz.toLowerCase() + '.pdf', data: blob });
+  }).then(function (r) { m.sheetBusy = false; renderModal(); if (r && r.status === 'saved') toast('Sticker sheet saved. Print at 100%.'); }, function () { m.sheetBusy = false; renderModal(); toast('The sticker sheet couldn’t be made. Check your connection and try again.'); });
+};
 function sha256(text) {
   var data = new TextEncoder().encode(text);
   return crypto.subtle.digest('SHA-256', data).then(function (buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); });
@@ -2898,7 +2995,7 @@ function startWorldDb() {
   if (S.age && myId) db.doc('data/users/' + myId + '/profile').set({ age: S.age, at: Date.now() }).catch(function () {});
   i18nLoadShared();
 }
-var XCLICK = {
+XCLICK = Object.assign(XCLICK, {
   ccset: function (b) { setCountry(b.getAttribute('data-cc')); },
   ageset: function (b) { S.age = b.getAttribute('data-v'); lsSet('ff-age', S.age); if (db && myId) db.doc('data/users/' + myId + '/profile').set({ age: S.age, at: Date.now() }).catch(function () {}); var nx = S.modal && S.modal.next; if (!S.rulesOk) openModal('rules', { next: nx }); else { closeModal(); if (nx) nx(); } },
   rulesok: function () { S.rulesOk = true; lsSet('ff-rules', '1'); var nx = S.modal && S.modal.next; closeModal(); if (nx) nx(); },
@@ -2923,7 +3020,7 @@ var XCLICK = {
   helpmap: function (b) { var h = helpPts.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0]; if (h) openOnSat(h.lat, h.lon, h.name); },
   gohelp: function () { scrollToId('help'); },
   refcopy: function () { var t = refLink(); if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { toast('Link copied.'); }, function () { toast('Copy the link shown above.'); }); else toast('Copy the link shown above.'); }
-};
+});
 var XCHANGE = {
   'al-photo': function (t) { uploadPhoto(t.files && t.files[0], S.alert); },
   'al-clip': function (t) { uploadClip(t.files && t.files[0], S.alert); },
@@ -3904,7 +4001,7 @@ document.addEventListener('submit', function (e) {
   if (id === 'donform') { var dv = (($('don-in') || {}).value || '').trim().slice(0, 300); if (db && isAdmin) db.doc('settings/site').update({ donate: dv }).then(function () { toast('Donation details saved.'); }, function (er) { dbErr(er, 'the donation details'); }); return; }
   if (id === 'hform') { var hqi = $('hq'); S.hq = hqi ? hqi.value : S.hq; homeSearch(); return; }
   if (id === 'imeiform') { var m1 = S.modal, v1 = ($('imei-in') || {}).value || ''; if (!m1 || normId(v1).length < 5) { toast('Enter the full IMEI or serial number.'); return; } m1.q = v1; m1.busy = true; renderModal(); sha256(normId(v1)).then(function (h) { return db ? db.collection('reports').where('idHash', '==', h).limit(5).get().then(function (sn) { return snapList(sn); }) : reports.filter(function (r) { return r.idHash === h; }); }).then(function (list) { m1.busy = false; m1.result = list; renderModal(); }, function () { m1.busy = false; m1.result = []; renderModal(); }); return; }
-  if (id === 'tagform') { var lab = (($('tag-in') || {}).value || '').trim(); if (!lab) { toast('Name the item first, e.g. House keys.'); return; } var tref = db.collection('tags').doc(); tref.set({ ownerId: myId, label: lab.slice(0, 40), createdAt: Date.now() }).then(function () { S.modal.tag = { id: tref.id, label: lab.slice(0, 40), ownerId: myId }; S.modal.label = ''; renderModal(); }, function (er) { dbErr(er, 'the tag'); }); return; }
+  if (id === 'tagform') { var labs = (($('tag-in') || {}).value || '').split(/[,\n]/).map(function (x) { return x.trim().slice(0, 40); }).filter(Boolean).slice(0, 30); if (!labs.length) { toast('Name the item first, e.g. House keys.'); return; } var made = [], now0 = Date.now(); Promise.all(labs.map(function (lab, i) { var tref = db.collection('tags').doc(); made.push({ id: tref.id, label: lab, ownerId: myId }); return tref.set({ ownerId: myId, label: lab, createdAt: now0 + i }); })).then(function () { S.modal.tag = made[made.length - 1]; S.modal.label = ''; renderModal(); if (made.length > 1) toast(made.length + ' tags made.'); }, function (er) { dbErr(er, 'the tag'); }); return; }
   if (id === 'storyform') { var stt = (($('st-title') || {}).value || '').trim(), stx = (($('st-text') || {}).value || '').trim(); if (!stt || stx.length < 20) { S.modal.title = stt; S.modal.text = stx; S.modal.err = 'Add a title and a few sentences.'; renderModal(); return; } db.collection('stories').add({ ownerId: myId, title: stt.slice(0, 80), text: stx.slice(0, 1200), createdAt: Date.now() }).then(function () { closeModal(); toast('Thank you for sharing your story.'); }, function (er) { dbErr(er, 'your story'); }); return; }
   if (id === 'qform') { var s = matches(S.query), hq = contentHits(S.query); if (s.length && !s[0].none && !(hq.first && hq.first.a !== 'helptype2' && !/[,\d]/.test(S.query) && !matchesPlaceExactly(S.query, s[0]))) goMatch(s[0]); else if (hq.first) hitGo(hq.first); else if (s.length) toast(s[0].title + '. ' + s[0].sub + '.'); else toast('No match. Try a town like Westlands, coordinates like -1.29, 36.82, or a Google Maps link.'); }
   else if (id === 'composer') sendMsg();
