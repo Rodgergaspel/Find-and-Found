@@ -97,7 +97,7 @@ a{color:var(--accent)}
 .htab:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 #regions{display:block}
 #app{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;user-select:none;-webkit-user-select:none;background:var(--navy)}
-#sat{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:auto}
+#sat,#tiles{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:auto}#tiles{pointer-events:none}.hbanner .hb img.banner{width:100%;height:100%;object-fit:cover;display:block}
 #map-svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
 #map-svg.cross{cursor:crosshair}#map-svg.grab{cursor:grab}
 .m-bg{fill:var(--map)}.m-park{fill:var(--park)}.m-water{fill:none;stroke:var(--water);stroke-linecap:round;stroke-linejoin:round}
@@ -144,6 +144,8 @@ a{color:var(--accent)}
 .cbtn.on{background:var(--ink);color:var(--panel);border-color:rgba(255,255,255,.4)}
 .cgroup{display:flex;flex-direction:column;border-radius:12px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line)}
 .cgroup .cbtn{border:0;border-radius:0;box-shadow:none}.cgroup .cbtn+.cbtn{border-top:1px solid var(--line)}
+/* phones: keep only My location, SAT/MAP and LIVE on the map so they clear the search card (pinch to zoom) */
+@media (max-width:819px){#ctrl [data-a="pause"],#ctrl .cgroup,#ctrl [data-a="droppin"]{display:none}}
 #credit{position:absolute;right:max(10px,env(safe-area-inset-right,0px));bottom:6px;font-size:10.5px;color:rgba(255,255,255,.8);text-shadow:0 1px 2px rgba(0,0,0,.6);pointer-events:none;z-index:1}
 @media (min-width:820px){
   #col{left:16px;top:16px;bottom:16px;right:auto;width:380px}
@@ -403,6 +405,11 @@ html:root[data-ff-theme="brand"]{--bg:#111C21;--panel:#1A2930;--ink:#F3F6F5;--mu
 .mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .qrbox{background:#fff;border-radius:16px;padding:16px;align-self:center}
 .qrbox img,.qrbox canvas{display:block;width:200px;height:200px}
+.qrbox canvas.sticker{width:200px;height:250px}
+.qrbox.stk{padding:10px;background:#E9EEF6}
+.tagsheet{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--soft)}
+.tagsheet .row{flex-wrap:wrap;gap:6px}
+.tagsheet select{font:inherit;font-size:15px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--field);color:var(--ink);padding:0 8px}
 .reglist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;word-break:break-all;user-select:all;-webkit-user-select:all}
 
@@ -629,6 +636,7 @@ span.star{cursor:default;min-height:0;min-width:0;font-size:16px}
   <div class="herotabs" role="tablist" aria-label="Map views"><button class="htab on" role="tab" aria-selected="true" data-a="view" data-v="sat">Satellite search</button><button class="htab" role="tab" aria-selected="false" data-a="view" data-v="regions">Region explorer · county, constituency, ward</button></div>
   <div id="app" class="sat">
     <canvas id="sat" aria-hidden="true"></canvas>
+    <canvas id="tiles" aria-hidden="true"></canvas>
     <svg id="map-svg" role="img" aria-label="Satellite globe and map with your search circle and reports">
       <rect class="m-bg" id="m-bg" x="0" y="0" width="100%" height="100%"></rect>
       <g id="m-layer">
@@ -844,6 +852,7 @@ a{color:var(--prop)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+var XCLICK = {}; // button handlers; created first so any part of the app can add to it
 window.FFbootRegions=function(R){
 
 /* What each country calls its first-level division (ISO2). Kenya has full depth. */
@@ -1453,6 +1462,79 @@ function renderSat(alpha) {
   }
 }
 
+// ---------- real map tiles: Esri World Imagery (satellite) and World Street Map ----------
+// Loaded straight from Esri's free tile service. Where images from other sites are blocked,
+// the app keeps the NASA globe and the drawn street map instead.
+var tileEl = $('tiles'), tileCtx = tileEl ? tileEl.getContext('2d') : null;
+var TL = { ok: false, fails: 0, cache: {}, keys: [], raf: 0, credit: '' };
+var ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+function tileUrl(layer, z, x, y) { return ESRI + layer + '/MapServer/tile/' + z + '/' + y + '/' + x; }
+function tileGet(layer, z, x, y) {
+  var k = layer + '/' + z + '/' + x + '/' + y, t = TL.cache[k];
+  if (t) return t;
+  if (!TL.ok && TL.fails > 6) return null;
+  t = TL.cache[k] = { img: new Image(), ready: false };
+  t.img.crossOrigin = 'anonymous'; t.img.decoding = 'async';
+  t.img.onload = function () { t.ready = true; if (!TL.ok) { TL.ok = true; var c = $('credit'); if (c) c.hidden = false; } tileRedraw(); };
+  t.img.onerror = function () { TL.fails++; };
+  t.img.src = tileUrl(layer, z, x, y);
+  TL.keys.push(k);
+  if (TL.keys.length > 600) { var old = TL.keys.splice(0, 150); old.forEach(function (o) { delete TL.cache[o]; }); }
+  return t;
+}
+function tileRedraw() { if (TL.raf) return; TL.raf = requestAnimationFrame(function () { TL.raf = 0; satDirty = true; draw(); }); }
+function lon2tx(lon, n) { return (lon + 180) / 360 * n; }
+function lat2ty(lat, n) { var r = Math.max(-85.05, Math.min(85.05, lat)) * D2R; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n; }
+function ty2lat(y, n) { return Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) / D2R; }
+function tx2lon(x, n) { return x / n * 360 - 180; }
+function drawTileLayer(layer, z, x0, x1, y0, y1, dpr, maxZ) {
+  var n = Math.pow(2, z);
+  for (var ty = y0; ty <= y1; ty++) for (var tx = x0; tx <= x1; tx++) {
+    var wx = ((tx % n) + n) % n;
+    var a = proj(ty2lat(ty, n), tx2lon(tx, n)), b = proj(ty2lat(ty + 1, n), tx2lon(tx + 1, n));
+    if (a.z <= 0 && b.z <= 0) continue;
+    var dx = a.x * dpr, dy = a.y * dpr, dw = (b.x - a.x) * dpr, dh = (b.y - a.y) * dpr;
+    if (dw <= 0 || dh <= 0) continue;
+    var t = tileGet(layer, z, wx, ty);
+    if (t && t.ready) { tileCtx.drawImage(t.img, dx, dy, dw + 0.6, dh + 0.6); continue; }
+    // not loaded yet: stretch the nearest loaded parent tile so there are no holes
+    for (var up = 1; up <= 5 && z - up >= 1; up++) {
+      var f = Math.pow(2, up), pz = z - up, px = Math.floor(wx / f), py = Math.floor(ty / f);
+      var p = TL.cache[layer + '/' + pz + '/' + px + '/' + py];
+      if (p && p.ready) { var s = 256 / f; tileCtx.drawImage(p.img, (wx - px * f) * s, (ty - py * f) * s, s, s, dx, dy, dw + 0.6, dh + 0.6); break; }
+    }
+  }
+}
+function renderTiles(alpha, sat) {
+  if (!tileCtx) return;
+  var dpr = Math.min(2, window.devicePixelRatio || 1), W = G.W, H = G.H, cw = Math.round(W * dpr), ch = Math.round(H * dpr);
+  if (tileEl.width !== cw || tileEl.height !== ch) { tileEl.width = cw; tileEl.height = ch; }
+  tileEl.style.opacity = alpha;
+  tileCtx.clearRect(0, 0, cw, ch);
+  if (alpha <= 0.01 || (!TL.ok && TL.fails > 6)) return;
+  var pts = [[0, 0], [W / 2, 0], [W, 0], [0, H / 2], [W, H / 2], [0, H], [W / 2, H], [W, H], [W / 2, H / 2]], la0 = 90, la1 = -90, lo0 = 999, lo1 = -999, any = false;
+  pts.forEach(function (q) { var g = unproj(q[0], q[1]); if (!g) return; any = true; la0 = Math.min(la0, g.lat); la1 = Math.max(la1, g.lat); lo0 = Math.min(lo0, g.lon); lo1 = Math.max(lo1, g.lon); });
+  if (!any) return;
+  if (lo1 - lo0 > 180) { lo0 = -180; lo1 = 180; }
+  var cosl = Math.max(0.05, Math.cos(cam.lat * D2R));
+  var z = Math.round(Math.log(2 * Math.PI * cam.R * cosl * dpr / 256) / Math.LN2), maxZ = sat ? 19 : 19;
+  z = Math.max(2, Math.min(maxZ, z));
+  var x0, x1, y0, y1, n;
+  for (;;) {
+    n = Math.pow(2, z);
+    x0 = Math.floor(lon2tx(lo0, n)); x1 = Math.floor(lon2tx(lo1, n)); y0 = Math.max(0, Math.floor(lat2ty(la1, n))); y1 = Math.min(n - 1, Math.floor(lat2ty(la0, n)));
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 90 || z <= 2) break;
+    z--;
+  }
+  if (sat) {
+    drawTileLayer('World_Imagery', z, x0, x1, y0, y1, dpr);
+    if (z >= 11) drawTileLayer('Reference/World_Transportation', z, x0, x1, y0, y1, dpr);
+    if (z >= 5) drawTileLayer('Reference/World_Boundaries_and_Places', z, x0, x1, y0, y1, dpr);
+  } else drawTileLayer('World_Street_Map', z, x0, x1, y0, y1, dpr);
+  var cr = sat ? 'Imagery © Esri, Maxar, Earthstar Geographics · NASA Blue Marble' : 'Map © Esri, HERE, Garmin, OpenStreetMap contributors';
+  if (TL.ok && cr !== TL.credit) { TL.credit = cr; var c = $('credit'); if (c) { c.textContent = cr; c.hidden = false; } }
+}
+
 // ---------- draw ----------
 function openReports() { return reports.filter(function (r) { return r.status !== 'resolved'; }); }
 function openListings() { return listings.filter(function (r) { return r.status !== 'closed'; }); }
@@ -1466,10 +1548,12 @@ function draw() {
   var globeO = sat && TEX ? 0 : 1 - smooth(R, 1800, 7000);
   var mapO = sat ? smooth(R, 4500, 13000) : smooth(R, 2600, 12000);
   var linesO = 1 - smooth(R, 12000, 45000), kenyaO = smooth(R, 380, 1100) * (1 - smooth(R, 20000, 70000)) * 0.9;
+  var tileO = TL.ok || TL.fails <= 6 ? (sat ? smooth(R, 2800, 7000) : mapO) : 0;
   if (satDirty) { renderSat(satO); satDirty = false; }
+  renderTiles(tileO, sat);
   attr(E['s-atmo'], { cx: o.x, cy: o.y, r: R + 8, opacity: satO > 0.01 && R < 2000 ? 1 : 0 });
   if (mapO > 0.01) ensureMap();
-  attr(E['m-bg'], { opacity: mapO }); attr(E['m-layer'], { opacity: mapO });
+  attr(E['m-bg'], { opacity: TL.ok ? 0 : mapO }); attr(E['m-layer'], { opacity: TL.ok ? 0 : mapO });
   if (mapO > 0.01 && map) {
     var wMaj = Math.max(1.5, Math.min(9, 0.022 * pxKm)), wMin = Math.max(0.6, Math.min(4.5, 0.009 * pxKm)), maj = pathOf(map.major);
     attr(E['m-major'], { d: maj, 'stroke-width': wMaj.toFixed(2) }); attr(E['m-case'], { d: maj, 'stroke-width': (wMaj + 2).toFixed(2) });
@@ -2082,7 +2166,7 @@ function propSection() {
   return '<div class="sec-head"><div><div class="eyebrow">Property &amp; Real Estate</div><h2>Homes, land and offices</h2><p>Rentals, sales, short stays, land and offices listed by people on Find &amp; Found. Use your map circle to see only what’s near you.</p></div>' + (S.showProp ? '' : '<button class="btn primary big" data-a="propnew">' + svg('plus', 18, 2.6) + 'List a property</button>') + '</div>' + form +
     '<div class="toolbar"><div class="chips">' + ['all'].concat(PTYPES).map(function (t) { return '<button class="chip' + (f.type === t ? ' on' : '') + '" data-a="pfilter" data-t="' + esc(t) + '">' + (t === 'all' ? 'All' : esc(t)) + '</button>'; }).join('') + '</div>' + circleToggle('pf-circle', f.circle) + '</div>' +
     (list.length ? '<div class="cards">' + list.slice(0, 24).map(function (r) {
-      return '<button class="icard" data-a="open" data-id="' + esc(r.id) + '"><div class="media prop">' + (r.photoId ? imgHtml(r.photoId, '', '', r.sensitive) : bannerSvg('prop', PICON[r.ltype] === 'Land' ? 'Land' : PICON[r.ltype] === 'Office' ? 'Office' : 'House')) + '</div><div class="body"><span class="pill prop">' + esc(r.ltype.toUpperCase()) + '</span><span class="price">' + esc(kes(r.price, r.cur)) + ' <span class="small muted" style="font-weight:600">' + esc(r.period || '') + '</span></span><span class="ell" style="font-weight:700;font-size:14px">' + esc(r.title) + '</span><span class="small muted ell">' + (r.beds && r.beds !== 'n/a' ? esc(r.beds === 'Studio' ? 'Studio' : r.beds + ' bed') + ' · ' : '') + esc(r.place || areaName(r.lat, r.lon)) + '</span></div></button>';
+      return '<button class="icard" data-a="open" data-id="' + esc(r.id) + '"><div class="media prop">' + (r.photoId ? imgHtml(r.photoId, '', '', r.sensitive) : bannerSvg('prop', pkindOf(r))) + '</div><div class="body"><span class="pill prop">' + esc(r.ltype.toUpperCase()) + '</span><span class="price">' + esc(kes(r.price, r.cur)) + ' <span class="small muted" style="font-weight:600">' + esc(r.period || '') + '</span></span><span class="ell" style="font-weight:700;font-size:14px">' + esc(r.title) + '</span><span class="small muted ell">' + (r.beds && r.beds !== 'n/a' ? esc(r.beds === 'Studio' ? 'Studio' : r.beds + ' bed') + ' · ' : '') + esc(r.place || areaName(r.lat, r.lon)) + '</span></div></button>';
     }).join('') + '</div>'
       : '<div class="empty"><div style="font-weight:800;font-size:16px">' + (live || db === false ? 'No properties listed yet' : 'Loading listings…') + '</div><div class="s13 muted">Have a house to let, land for sale or an office? List it here and people can message you.</div>' + (S.showProp ? '' : '<button class="btn primary" data-a="propnew">' + svg('plus', 18, 2.6) + 'List a property</button>') + '</div>');
 }
@@ -2199,7 +2283,7 @@ function reportCard(r) {
   return '<button class="icard" data-a="open" data-id="' + esc(r.id) + '"><div class="media ' + r.kind + '">' + (r.photoId ? imgHtml(r.photoId, '', '', r.sensitive) : bannerSvg(r.kind === 'found' ? 'found' : 'lost', 'item', r.cat)) + '</div><div class="body"><span class="pill ' + r.kind + '">' + (r.kind === 'lost' ? 'LOST' : 'FOUND') + '</span><span class="ell" style="font-weight:800;font-size:15px">' + esc(r.title) + '</span><span class="small muted ell">' + esc(r.place || areaName(r.lat, r.lon)) + ' · ' + esc(ago(r.createdAt || Date.now())) + '</span></div></button>';
 }
 function listingCard(r) {
-  return '<button class="icard" data-a="open" data-id="' + esc(r.id) + '"><div class="media prop">' + (r.photoId ? imgHtml(r.photoId, '', '', r.sensitive) : bannerSvg('prop', PICON[r.ltype] === 'Land' ? 'Land' : PICON[r.ltype] === 'Office' ? 'Office' : 'House')) + '</div><div class="body"><span class="pill prop">' + esc(String(r.ltype).toUpperCase()) + '</span><span class="price">' + esc(kes(r.price, r.cur)) + ' <span class="small muted" style="font-weight:600">' + esc(r.period || '') + '</span></span><span class="ell" style="font-weight:700;font-size:14px">' + esc(r.title) + '</span><span class="small muted ell">' + (r.beds && r.beds !== 'n/a' ? esc(r.beds === 'Studio' ? 'Studio' : r.beds + ' bed') + ' · ' : '') + esc(r.place || areaName(r.lat, r.lon)) + '</span></div></button>';
+  return '<button class="icard" data-a="open" data-id="' + esc(r.id) + '"><div class="media prop">' + (r.photoId ? imgHtml(r.photoId, '', '', r.sensitive) : bannerSvg('prop', pkindOf(r))) + '</div><div class="body"><span class="pill prop">' + esc(String(r.ltype).toUpperCase()) + '</span><span class="price">' + esc(kes(r.price, r.cur)) + ' <span class="small muted" style="font-weight:600">' + esc(r.period || '') + '</span></span><span class="ell" style="font-weight:700;font-size:14px">' + esc(r.title) + '</span><span class="small muted ell">' + (r.beds && r.beds !== 'n/a' ? esc(r.beds === 'Studio' ? 'Studio' : r.beds + ' bed') + ' · ' : '') + esc(r.place || areaName(r.lat, r.lon)) + '</span></div></button>';
 }
 function homeHtml() {
   var res = S.hres;
@@ -2314,9 +2398,9 @@ function renderModal() {
   } else if (m.type === 'tags') {
     if (!db || !myId) h = head('QR tags', 'Stick a QR tag on your keys, bag or laptop. Whoever finds it scans the code and can message you — without seeing your number.') + '<div class="note">Sign in to make tags.</div>' + (window.FFAuth && FFAuth.configured ? '<button class="btn primary" data-a="signin">Sign in with Google</button>' : '');
     else h = head('QR tags', 'Stick a QR tag on your keys, bag or laptop. Whoever finds it scans the code and can message you — without seeing your number.') +
-      '<form id="tagform" class="row"><input id="tag-in" maxlength="40" placeholder="What is it? e.g. House keys" style="flex:1;min-width:0;font:inherit;font-size:16px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--field);color:var(--ink);padding:0 12px" value="' + esc(m.label || '') + '"><button class="btn primary" type="submit">Make tag</button></form>' +
-      (m.tag ? '<div class="stack" style="align-items:center;gap:10px"><b>' + esc(m.tag.label) + '</b><div class="qrbox" id="qrbox" aria-label="QR code for ' + esc(m.tag.label) + '"></div><span class="mono">' + esc(tagUrl(m.tag.id)) + '</span><div class="row" style="flex-wrap:wrap;justify-content:center"><button class="btn" data-a="tagcopy">Copy link</button>' + (downloadsCap ? '<button class="btn primary" data-a="tagsave">Save QR image</button>' : '') + '</div>' + (downloadsCap ? '' : '<p class="small muted">Take a screenshot to print it.</p>') + '</div>' : '') +
-      (myTags.length ? '<div class="stack" style="gap:6px"><div class="s13 b">Your tags</div>' + myTags.map(function (t) { return '<button class="rowbtn" data-a="tagshow" data-id="' + esc(t.id) + '">' + ic(I2.qr, 20) + '<span class="grow">' + esc(t.label) + '</span><span class="small muted">' + esc(ago(t.createdAt || Date.now())) + '</span></button>'; }).join('') + '</div>' : '');
+      '<form id="tagform" class="row"><input id="tag-in" maxlength="40" placeholder="What is it? e.g. House keys, Laptop, School bag" style="flex:1;min-width:0;font:inherit;font-size:16px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--field);color:var(--ink);padding:0 12px" value="' + esc(m.label || '') + '"><button class="btn primary" type="submit">Make tag</button></form>' +
+      (m.tag ? '<div class="stack" style="align-items:center;gap:10px"><b>' + esc(m.tag.label) + '</b><div class="qrbox stk" id="qrbox" aria-label="QR sticker for ' + esc(m.tag.label) + '"></div><span class="mono">' + esc(tagUrl(m.tag.id)) + '</span><div class="row" style="flex-wrap:wrap;justify-content:center"><button class="btn" data-a="tagcopy">Copy link</button>' + (downloadsCap ? '<button class="btn primary" data-a="tagsave">Save sticker image</button><button class="btn" data-a="tagsheet" data-v="one">Print a sheet of this</button>' : '') + '</div>' + (downloadsCap ? '' : '<p class="small muted">Take a screenshot to print it.</p>') + '</div>' : '') +
+      '<p class="small muted" style="margin:0">Make several at once by separating names with commas.</p>' + (myTags.length && downloadsCap ? tagSheetHtml(m) : '') + (myTags.length ? '<div class="stack" style="gap:6px"><div class="s13 b">Your tags</div>' + myTags.map(function (t) { return '<button class="rowbtn" data-a="tagshow" data-id="' + esc(t.id) + '">' + ic(I2.qr, 20) + '<span class="grow">' + esc(t.label) + '</span><span class="small muted">' + esc(ago(t.createdAt || Date.now())) + '</span></button>'; }).join('') + '</div>' : '');
   } else if (m.type === 'tagfound') {
     var t = m.tag;
     h = head(t ? 'You found: ' + esc(t.label) : 'Tag not found', t ? 'Thank you! The owner registered this tag on Find &amp; Found. Message them to arrange the return — they won’t see your number unless you share it.' : 'This tag may have been removed.') +
@@ -2337,11 +2421,100 @@ function renderModal() {
   if (m.type === 'tags' && m.tag) drawQR(m.tag);
 }
 function tagUrl(id) { return (window.FFAuth ? location.origin + location.pathname : ARTIFACT_URL) + '#tag-' + id; }
+function tagCode(id) { return String(id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase(); }
+function qrCanvas(text, px, lvl) {
+  var d = document.createElement('div');
+  new QRCode(d, { text: text, width: px, height: px, colorDark: '#0B1F4B', colorLight: '#FFFFFF', correctLevel: lvl || QRCode.CorrectLevel.H });
+  return d.querySelector('canvas');
+}
+function rrect(x, a, b, w, h, r) { x.beginPath(); x.moveTo(a + r, b); x.arcTo(a + w, b, a + w, b + h, r); x.arcTo(a + w, b + h, a, b + h, r); x.arcTo(a, b + h, a, b, r); x.arcTo(a, b, a + w, b, r); x.closePath(); }
+function fitText(x, t, maxW, size, weight) { var f = size; do { x.font = weight + ' ' + f + 'px "Plus Jakarta Sans", Arial, sans-serif'; if (x.measureText(t).width <= maxW) break; f -= 1; } while (f > size * 0.55); if (x.measureText(t).width > maxW) { while (t.length > 1 && x.measureText(t + '…').width > maxW) t = t.slice(0, -1); t += '…'; } return t; }
+// One sticker, W px wide and 1.25 W tall: navy band, QR, item name, short code.
+function stickerCanvas(tag, W) {
+  var H = Math.round(W * 1.25), c = document.createElement('canvas'); c.width = W; c.height = H; c.className = 'sticker';
+  var x = c.getContext('2d'), u = W / 100;
+  x.fillStyle = '#FFFFFF'; rrect(x, 0, 0, W, H, 8 * u); x.fill();
+  x.save(); rrect(x, 0, 0, W, H, 8 * u); x.clip();
+  x.fillStyle = '#0B1F4B'; x.fillRect(0, 0, W, 21 * u);
+  x.fillStyle = '#1E9E4A'; x.beginPath(); x.arc(11 * u, 10.5 * u, 5.2 * u, 0, Math.PI * 2); x.fill();
+  x.strokeStyle = '#FFFFFF'; x.lineWidth = 1.4 * u; x.beginPath(); x.arc(10.3 * u, 9.8 * u, 2.4 * u, 0, Math.PI * 2); x.moveTo(12 * u, 11.5 * u); x.lineTo(13.9 * u, 13.4 * u); x.stroke();
+  x.fillStyle = '#FFFFFF'; x.textBaseline = 'middle'; x.textAlign = 'left';
+  x.fillText(fitText(x, 'Find & Found', 76 * u, 9 * u, '800'), 19 * u, 7.8 * u);
+  x.fillStyle = '#C9D6F2'; x.fillText(fitText(x, 'IF FOUND, SCAN TO RETURN', 76 * u, 5.4 * u, '700'), 19 * u, 15 * u);
+  x.restore();
+  var q = qrCanvas(tagUrl(tag.id), 512), qs = 70 * u;
+  x.imageSmoothingEnabled = false; if (q) x.drawImage(q, 15 * u, 28 * u, qs, qs);
+  x.textAlign = 'center'; x.fillStyle = '#0B1F4B';
+  x.fillText(fitText(x, String(tag.label || 'My item'), 88 * u, 8 * u, '800'), W / 2, 107.5 * u);
+  x.fillStyle = '#56637A'; x.fillText(fitText(x, 'Tag ' + tagCode(tag.id) + ' · owner’s number stays private', 92 * u, 4.6 * u, '600'), W / 2, 117 * u);
+  x.strokeStyle = '#C3CFE2'; x.lineWidth = Math.max(1, 0.6 * u); rrect(x, 0.5, 0.5, W - 1, H - 1, 8 * u); x.stroke();
+  return c;
+}
+// Tiny sticker: QR fills it, one thin strip says what it is. Lower error correction keeps each dot bigger.
+function stickerTiny(tag, W) {
+  var H = Math.round(W * 1.2), c = document.createElement('canvas'); c.width = W; c.height = H;
+  var x = c.getContext('2d'), u = W / 100;
+  x.fillStyle = '#FFFFFF'; rrect(x, 0, 0, W, H, 7 * u); x.fill();
+  var q = qrCanvas(tagUrl(tag.id), 512, QRCode.CorrectLevel.M); x.imageSmoothingEnabled = false; if (q) x.drawImage(q, 8 * u, 8 * u, 84 * u, 84 * u);
+  x.save(); rrect(x, 0, 0, W, H, 7 * u); x.clip(); x.fillStyle = '#0B1F4B'; x.fillRect(0, 99 * u, W, 21 * u); x.restore();
+  x.fillStyle = '#FFFFFF'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(fitText(x, 'FIND & FOUND · SCAN', 92 * u, 10 * u, '800'), W / 2, 110 * u);
+  x.strokeStyle = '#C3CFE2'; x.lineWidth = Math.max(1, 0.8 * u); rrect(x, 0.5, 0.5, W - 1, H - 1, 7 * u); x.stroke();
+  return c;
+}
 function drawQR(tag) {
   var box = $('qrbox'); if (!box) return;
   if (!window.QRCode) { box.innerHTML = '<div class="small" style="color:#10262B;max-width:200px">The QR maker didn’t load. Copy the link instead.</div>'; return; }
-  box.innerHTML = ''; try { new QRCode(box, { text: tagUrl(tag.id), width: 400, height: 400, colorDark: '#10262B', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.M }); } catch (e) {}
+  box.innerHTML = ''; try { box.appendChild(stickerCanvas(tag, 800)); } catch (e) { box.innerHTML = '<div class="small" style="color:#10262B;max-width:200px">The sticker couldn’t be drawn. Copy the link instead.</div>'; }
 }
+var STK = { T: [15, 'Tiny · 1.5 cm', 1.2], S: [25, 'Small · 2.5 cm', 1.25], M: [40, 'Medium · 4 cm', 1.25], L: [60, 'Large · 6 cm', 1.25] };
+function tagSheetHtml(m) {
+  var sz = m.sheetSize || 'M', cp = m.sheetCopies || 2;
+  return '<div class="tagsheet"><div class="s13 b">Print stickers on A4</div>' +
+    '<div class="row">' + Object.keys(STK).map(function (k) { return '<button class="chip' + (sz === k ? ' on' : '') + '" data-a="tagsz" data-v="' + k + '">' + STK[k][1] + '</button>'; }).join('') + '</div>' +
+    '<div class="row" style="align-items:center"><label class="small b" for="tag-copies">Copies of each</label><select id="tag-copies">' + [1, 2, 3, 4, 6, 8, 10, 20].map(function (n) { return '<option' + (n === cp ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>' +
+    '<button class="btn primary" data-a="tagsheet" data-v="all"' + (m.sheetBusy ? ' disabled' : '') + '>' + (m.sheetBusy ? 'Making PDF…' : 'Sheet of all my tags (' + myTags.length + ')') + '</button></div>' +
+    '<p class="small muted" style="margin:0">Print at 100% (actual size) on A4 sticker paper or plain paper, then cut along the grey lines. Tiny stickers show only the code: print one first and test-scan it with a phone before printing many. Cover stickers on keys and bags with clear tape so the code lasts.</p></div>';
+}
+var jsPdfLoading = null;
+function loadJsPdf() {
+  if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if (!jsPdfLoading) jsPdfLoading = new Promise(function (ok, no) { var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload = function () { window.jspdf && window.jspdf.jsPDF ? ok(window.jspdf.jsPDF) : no(); }; sc.onerror = function () { jsPdfLoading = null; no(); }; document.head.appendChild(sc); });
+  return jsPdfLoading;
+}
+function makeTagSheet(tags, copies, sizeKey, fillPage) {
+  var tiny = sizeKey === 'T', wmm = STK[sizeKey][0], hmm = wmm * STK[sizeKey][2], gap = tiny ? 3 : 4, mx = 10, my = 12, cols = Math.max(1, Math.floor((210 - 2 * mx + gap) / (wmm + gap))), rows = Math.max(1, Math.floor((297 - 2 * my + gap) / (hmm + gap)));
+  var list = [];
+  if (fillPage) for (var f = 0; f < cols * rows; f++) list.push(tags[0]);
+  else tags.forEach(function (t) { for (var k = 0; k < copies; k++) list.push(t); });
+  var px = Math.round(wmm / 25.4 * 300), cache = {};
+  return loadJsPdf().then(function (JsPDF) {
+    var doc = new JsPDF({ unit: 'mm', format: 'a4' }), per = cols * rows, ox = (210 - (cols * wmm + (cols - 1) * gap)) / 2;
+    list.forEach(function (t, i) {
+      if (i && i % per === 0) doc.addPage();
+      var j = i % per, cx = ox + (j % cols) * (wmm + gap), cy = my + Math.floor(j / cols) * (hmm + gap);
+      if (!cache[t.id]) cache[t.id] = (tiny ? stickerTiny(t, Math.max(px, 600)) : stickerCanvas(t, px)).toDataURL('image/png');
+      doc.setDrawColor(190, 198, 210); doc.setLineWidth(0.2); doc.setLineDashPattern([1.2, 1.2], 0); doc.rect(cx - 0.8, cy - 0.8, wmm + 1.6, hmm + 1.6);
+      doc.addImage(cache[t.id], 'PNG', cx, cy, wmm, hmm, 'stk' + t.id, 'FAST');
+    });
+    return doc.output('blob');
+  });
+}
+XCLICK.tagsz = function (b) { if (S.modal) { S.modal.sheetSize = b.getAttribute('data-v'); renderModal(); } };
+XCLICK.tagsave = function () {
+  var tg = S.modal && S.modal.tag; if (!tg || !downloadsCap || !window.QRCode) return;
+  stickerCanvas(tg, 1200).toBlob(function (blob) { downloadsCap.save({ filename: 'findfound-sticker-' + tg.label.replace(/[^\w-]+/g, '-').toLowerCase() + '.png', data: blob }).then(function (r) { if (r && r.status === 'saved') toast('Sticker saved.'); }, function () { toast('The sticker wasn’t saved.'); }); }, 'image/png');
+};
+XCLICK.tagsheet = function (b) {
+  var m = S.modal; if (!m || m.sheetBusy || !downloadsCap) return;
+  if (!window.QRCode) { toast('The QR maker didn’t load. Try again in a moment.'); return; }
+  var one = b.getAttribute('data-v') === 'one', tags = one ? (m.tag ? [m.tag] : []) : myTags.slice(0, 50);
+  if (!tags.length) { toast('Make a tag first.'); return; }
+  var sel = $('tag-copies'); m.sheetCopies = sel ? parseInt(sel.value, 10) || 2 : (m.sheetCopies || 2);
+  var sz = m.sheetSize || 'M'; m.sheetBusy = true; renderModal();
+  makeTagSheet(tags, m.sheetCopies, sz, one).then(function (blob) {
+    return downloadsCap.save({ filename: 'findfound-stickers-' + (one ? tags[0].label.replace(/[^\w-]+/g, '-').toLowerCase() : 'all') + '-' + sz.toLowerCase() + '.pdf', data: blob });
+  }).then(function (r) { m.sheetBusy = false; renderModal(); if (r && r.status === 'saved') toast('Sticker sheet saved. Print at 100%.'); }, function () { m.sheetBusy = false; renderModal(); toast('The sticker sheet couldn’t be made. Check your connection and try again.'); });
+};
 function sha256(text) {
   var data = new TextEncoder().encode(text);
   return crypto.subtle.digest('SHA-256', data).then(function (buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); });
@@ -2528,6 +2701,7 @@ function setLang(l) {
 var mediaCache = {}, mediaLoading = {};
 function blobSrc(id) {
   if (!id) return '';
+  if (/^https?:/.test(String(id))) return id;
   if (String(id).indexOf('m:') !== 0) return '/_blob/' + id;
   if (mediaCache[id]) return mediaCache[id];
   if (!mediaLoading[id] && db) { mediaLoading[id] = 1; db.doc('media/' + id.slice(2)).get().then(function (d) { if (d.exists && /^data:image\/(jpeg|png|webp);base64,/.test(d.data().data || '')) { mediaCache[id] = d.data().data; scheduleUI(); scheduleSections(); renderExtra(); } }, function () {}); }
@@ -2821,7 +2995,7 @@ function startWorldDb() {
   if (S.age && myId) db.doc('data/users/' + myId + '/profile').set({ age: S.age, at: Date.now() }).catch(function () {});
   i18nLoadShared();
 }
-var XCLICK = {
+XCLICK = Object.assign(XCLICK, {
   ccset: function (b) { setCountry(b.getAttribute('data-cc')); },
   ageset: function (b) { S.age = b.getAttribute('data-v'); lsSet('ff-age', S.age); if (db && myId) db.doc('data/users/' + myId + '/profile').set({ age: S.age, at: Date.now() }).catch(function () {}); var nx = S.modal && S.modal.next; if (!S.rulesOk) openModal('rules', { next: nx }); else { closeModal(); if (nx) nx(); } },
   rulesok: function () { S.rulesOk = true; lsSet('ff-rules', '1'); var nx = S.modal && S.modal.next; closeModal(); if (nx) nx(); },
@@ -2846,7 +3020,7 @@ var XCLICK = {
   helpmap: function (b) { var h = helpPts.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0]; if (h) openOnSat(h.lat, h.lon, h.name); },
   gohelp: function () { scrollToId('help'); },
   refcopy: function () { var t = refLink(); if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { toast('Link copied.'); }, function () { toast('Copy the link shown above.'); }); else toast('Copy the link shown above.'); }
-};
+});
 var XCHANGE = {
   'al-photo': function (t) { uploadPhoto(t.files && t.files[0], S.alert); },
   'al-clip': function (t) { uploadClip(t.files && t.files[0], S.alert); },
@@ -2983,7 +3157,7 @@ function alertsHub() {
   var parts = splitHead(alertsSection()), hp = splitHead(helpHtml());
   var tools = toolBtn('ai', ic(I2.star, 24, 2.2), 'Ask AI') + toolBtn('alnew', ic(I2.bell, 24, 2.2), 'Post an alert') + toolBtn('catmap', svg('pin', 22, 2.2), 'Risk map', ' data-l="alerts"') + toolBtn('qmissing', ic(I2.person, 24, 2.2), 'Missing person') + toolBtn('hubhelp', ic(I2.house, 24, 2.2), 'Help nearby') + toolBtn('helpnew', svg('plus', 22, 2.4), 'Add a help place') + toolBtn('rulesview', ic(I2.list, 24, 2.2), 'Guidelines') + toolBtn('laws', ic(I2.warn, 24, 2.2), 'Rules & the law');
   var body = S.alTab === 'help' ? '<div id="help"><p class="hubnote">' + esc(emergencyLine()) + '</p>' + hp[1] + '</div>' : parts[1];
-  return hub(parts[0].replace('Safety alerts</div>', 'Alerts &amp; help</div>'), tools, tabsHtml('alTab', [['alerts', 'Alerts & risk areas'], ['help', 'Help nearby']]), body, headBanner('alert', [['Alert', '', 'Safety alerts', 'data-a="hubtab" data-k="alTab" data-v="alerts"'], ['Office', '', 'Police & help', 'data-a="hubhelp"'], ['House', '', 'Shelters', 'data-a="helpshelter"']]), areaBar('alerts'));
+  return hub(parts[0].replace('Safety alerts</div>', 'Alerts &amp; help</div>'), tools, tabsHtml('alTab', [['alerts', 'Alerts & risk areas'], ['help', 'Help nearby']]), body, headBanner('alert', [['Alert', '', 'Safety alerts', 'data-a="hubtab" data-k="alTab" data-v="alerts"'], ['Police', '', 'Police & help', 'data-a="hubhelp"'], ['Shelter', '', 'Shelters', 'data-a="helpshelter"']]), areaBar('alerts'));
 }
 function adsHub() {
   var parts = splitHead(adsSection()), sp = splitHead(supportHtml())[1];
@@ -3187,26 +3361,56 @@ function dUnitLabel() { return S.dunit === 'mi' ? 'miles' : 'km'; }
 // ---------- illustrated image banners (used until people add real photos) ----------
 var BN = { lost: ['#FDE3DF', '#F7B9AE', '#D92D20'], found: ['#DDF4E6', '#A9E2BF', '#1E9E4A'], prop: ['#DCE8FF', '#A8C3F5', '#1650C8'], ad: ['#EEE3FD', '#CDB6F4', '#7A3FD1'], alert: ['#FFF0D1', '#F8D08A', '#E08A00'] };
 var bnId = 0;
+// Drawn illustrations (no photos): flat-lay items for Lost & Found, Nairobi street scenes for property, alerts and ads.
+var ART_ITEM = {
+  Phone: function (p) { return '<g transform="rotate(-14 160 116)"><rect x="132" y="66" width="64" height="112" rx="12" fill="#000" opacity=".14"/><rect x="128" y="60" width="64" height="112" rx="12" fill="#1B2233"/><rect x="133" y="68" width="54" height="96" rx="6" fill="url(#' + p + 'scr)"/><path d="M150 86 L162 102 L155 117 L171 133 M162 102 L180 96 M155 117 L141 126 M171 133 L168 150" stroke="#fff" stroke-width="1.5" fill="none" opacity=".9" stroke-linejoin="round"/><rect x="150" y="63" width="20" height="3" rx="1.5" fill="#3A4256"/></g>'; },
+  Keys: function () { return '<path d="M118 92 C92 66 70 46 26 30" stroke="#000" stroke-opacity=".12" stroke-width="12" fill="none" stroke-linecap="round" transform="translate(3 5)"/><path d="M118 92 C92 66 70 46 26 30" stroke="#1650C8" stroke-width="12" fill="none" stroke-linecap="round"/><path d="M118 92 C92 66 70 46 26 30" stroke="#fff" stroke-width="1.5" stroke-dasharray="4 4" fill="none" opacity=".7"/><circle cx="132" cy="104" r="18" fill="none" stroke="#9AA5B5" stroke-width="4"/><g transform="rotate(18 150 118)"><circle cx="158" cy="122" r="15" fill="#E2B34A"/><circle cx="152" cy="122" r="4" fill="#F6EEDC"/><path d="M172 117 H236 V127 H228 V133 H220 V127 H212 V134 H204 V127 H172Z" fill="#E2B34A"/><path d="M172 121 H232" stroke="#B88A2A" stroke-width="1.2"/></g><g transform="rotate(62 140 120)"><rect x="150" y="112" width="26" height="22" rx="7" fill="#C9D1DC"/><circle cx="157" cy="123" r="3.5" fill="#F6F8FB"/><path d="M176 118 H226 V128 H220 V134 H212 V128 H204 V133 H196 V128 H176Z" fill="#C9D1DC"/></g>'; },
+  Wallet: function () { return '<rect x="122" y="56" width="62" height="32" rx="4" fill="#2E6BE6"/><rect x="146" y="50" width="62" height="32" rx="4" fill="#1E9E4A"/><rect x="109" y="74" width="112" height="78" rx="10" fill="#000" opacity=".14"/><rect x="104" y="68" width="112" height="78" rx="10" fill="#8B5A2B"/><rect x="104" y="68" width="112" height="40" rx="10" fill="#9C6634"/><rect x="110" y="74" width="100" height="66" rx="7" fill="none" stroke="#E8C9A0" stroke-width="1.4" stroke-dasharray="4 3"/><rect x="190" y="98" width="30" height="20" rx="6" fill="#6E431D"/><circle cx="204" cy="108" r="3.5" fill="#E2B34A"/>'; },
+  'ID card': function () { return '<rect x="105" y="70" width="120" height="76" rx="8" fill="#000" opacity=".12"/><rect x="100" y="64" width="120" height="76" rx="8" fill="#fff" stroke="#D5DCE8"/><path d="M108 64 H212 A8 8 0 0 1 220 72 V80 H100 V72 A8 8 0 0 1 108 64Z" fill="#1E9E4A"/><rect x="100" y="80" width="120" height="3" fill="#D92D20"/><rect x="110" y="90" width="32" height="40" rx="4" fill="#DCE3EE"/><circle cx="126" cy="104" r="8" fill="#9AA7BC"/><path d="M113 130 C114 118 138 118 139 130Z" fill="#9AA7BC"/><rect x="150" y="93" width="58" height="5" rx="2.5" fill="#CBD3E0"/><rect x="150" y="105" width="44" height="5" rx="2.5" fill="#CBD3E0"/><rect x="150" y="117" width="52" height="5" rx="2.5" fill="#CBD3E0"/><rect x="190" y="122" width="18" height="12" rx="2" fill="#E2B34A"/><path d="M190 128 H208 M199 122 V134" stroke="#B88A2A" stroke-width="1"/>'; },
+  Backpack: function () { return '<rect x="125" y="58" width="80" height="112" rx="26" fill="#000" opacity=".14"/><path d="M146 54 C146 38 174 38 174 54" stroke="#22262F" stroke-width="7" fill="none"/><rect x="112" y="72" width="10" height="72" rx="5" fill="#1A1D24"/><rect x="198" y="72" width="10" height="72" rx="5" fill="#1A1D24"/><rect x="120" y="52" width="80" height="112" rx="26" fill="#2B303B"/><path d="M128 84 H192" stroke="#4A5263" stroke-width="2" stroke-dasharray="3 2"/><rect x="132" y="104" width="56" height="48" rx="12" fill="#363C4A"/><path d="M140 116 H180" stroke="#7A8396" stroke-width="2"/><rect x="176" y="112" width="6" height="9" rx="2" fill="#C9D1DC"/>'; },
+  Laptop: function () { return '<path d="M80 154 L240 154 L250 160 L70 160Z" fill="#000" opacity=".12"/><rect x="98" y="48" width="124" height="86" rx="7" fill="#AEB8C6"/><rect x="104" y="54" width="112" height="72" rx="3" fill="#E7EDF6"/><path d="M104 96 C130 84 150 104 178 90 S206 86 216 92 V126 H104Z" fill="#CDEBD8"/><path d="M104 78 H216 M140 54 V126 M186 54 V126" stroke="#fff" stroke-width="3"/><path d="M160 64 c-7 0-11 5-11 10 0 8 11 17 11 17 s11-9 11-17 c0-5-4-10-11-10z" fill="#1650C8"/><circle cx="160" cy="74" r="3.5" fill="#fff"/><path d="M86 134 H234 L248 154 H72Z" fill="#D8DEE7"/><rect x="144" y="140" width="32" height="8" rx="2" fill="#C2CAD6"/>'; },
+  Umbrella: function () { return '<ellipse cx="160" cy="168" rx="70" ry="7" fill="#000" opacity=".12"/><path d="M88 108 Q160 22 232 108 Q214 98 196 108 Q178 98 160 108 Q142 98 124 108 Q106 98 88 108Z" fill="#1E9E4A"/><path d="M160 46 Q130 70 124 108 M160 46 Q190 70 196 108 M160 46 V108" stroke="#157A39" stroke-width="2" fill="none"/><path d="M160 46 Q118 60 106 102" stroke="#2DB35C" stroke-width="6" fill="none" opacity=".5"/><rect x="157" y="38" width="6" height="10" rx="2" fill="#6B4423"/><path d="M160 108 V156 q0 14 -12 14 q-11 0 -11 -11" stroke="#8B5A2B" stroke-width="6" fill="none" stroke-linecap="round"/>'; },
+  Glasses: function () { return '<rect x="104" y="134" width="120" height="30" rx="15" fill="#000" opacity=".12"/><rect x="98" y="130" width="120" height="30" rx="15" fill="#1B2233"/><path d="M106 145 H210" stroke="#3A4256" stroke-width="2"/><path d="M106 96 L84 80 M214 96 L236 80" stroke="#1B2233" stroke-width="4" stroke-linecap="round"/><rect x="104" y="86" width="48" height="36" rx="14" fill="#CFE3F7" fill-opacity=".7" stroke="#1B2233" stroke-width="5"/><rect x="168" y="86" width="48" height="36" rx="14" fill="#CFE3F7" fill-opacity=".7" stroke="#1B2233" stroke-width="5"/><path d="M152 98 q8 -8 16 0" stroke="#1B2233" stroke-width="4" fill="none"/><path d="M114 96 l10 -4 M178 96 l10 -4" stroke="#fff" stroke-width="3" stroke-linecap="round"/>'; },
+  Pet: function () { return '<ellipse cx="160" cy="170" rx="58" ry="7" fill="#000" opacity=".12"/><path d="M196 152 C236 156 240 124 222 116" stroke="#8E96A3" stroke-width="11" fill="none" stroke-linecap="round"/><ellipse cx="160" cy="134" rx="42" ry="36" fill="#8E96A3"/><path d="M140 112 q6 10 0 20 M180 112 q-6 10 0 20" stroke="#737B88" stroke-width="4" fill="none"/><path d="M136 66 L142 92 L160 80Z M184 66 L178 92 L160 80Z" fill="#8E96A3"/><path d="M140 72 L144 88 L152 82Z M180 72 L176 88 L168 82Z" fill="#F2B8C0"/><circle cx="160" cy="92" r="28" fill="#98A0AD"/><ellipse cx="149" cy="90" rx="4.5" ry="6" fill="#2B2F38"/><ellipse cx="171" cy="90" rx="4.5" ry="6" fill="#2B2F38"/><circle cx="150.5" cy="88" r="1.6" fill="#fff"/><circle cx="172.5" cy="88" r="1.6" fill="#fff"/><path d="M156 100 h8 l-4 4z" fill="#E88B9A"/><path d="M146 104 L126 100 M146 107 L126 110 M174 104 L194 100 M174 107 L194 110" stroke="#5E6672" stroke-width="1.2"/><path d="M136 116 Q160 128 184 116" stroke="#D92D20" stroke-width="6" fill="none" stroke-linecap="round"/><circle cx="160" cy="126" r="5" fill="#E2B34A"/>'; },
+  Other: function () { return '<rect x="125" y="78" width="80" height="72" rx="4" fill="#000" opacity=".12"/><rect x="120" y="72" width="80" height="72" rx="4" fill="#C99A5E"/><path d="M120 72 L134 56 H214 L200 72Z" fill="#DDB27A"/><path d="M200 72 L214 56 V128 L200 144Z" fill="#AD7F45"/><rect x="152" y="72" width="16" height="72" fill="#E9D3A8"/><path d="M152 72 L166 56 H182 L168 72Z" fill="#F2E2C2"/><rect x="128" y="124" width="20" height="12" rx="2" fill="#fff" opacity=".8"/>'; }
+};
+function bnTree(x, y, s) { s = s || 1; return '<g transform="translate(' + x + ' ' + y + ') scale(' + s + ')"><path d="M0 0 C0 -14 -3 -24 -8 -32 M0 -16 C4 -22 8 -26 14 -32" stroke="#6B4423" stroke-width="3" fill="none" stroke-linecap="round"/><ellipse cx="2" cy="-36" rx="28" ry="7" fill="#3E8E4F"/><ellipse cx="-10" cy="-40" rx="14" ry="5" fill="#4FA35F"/><ellipse cx="14" cy="-40" rx="12" ry="4.5" fill="#4FA35F"/></g>'; }
+function bnBush(x, y) { return '<ellipse cx="' + x + '" cy="' + y + '" rx="13" ry="9" fill="#3E8E4F"/><ellipse cx="' + (x + 9) + '" cy="' + (y - 3) + '" rx="8" ry="6" fill="#4FA35F"/>'; }
+function bnWin(x, y, w, h, f) { return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="2" fill="' + (f || '#7FB2F0') + '"/>'; }
+function bnSky(p, c, dusk) {
+  var d = '<linearGradient id="' + p + 'sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + (dusk ? '#22305C' : c[0]) + '"/><stop offset="1" stop-color="' + (dusk ? '#F2A35E' : '#FFFFFF') + '"/></linearGradient>';
+  var sky = '<rect width="320" height="200" fill="url(#' + p + 'sky)"/>' + (dusk ? '<circle cx="296" cy="30" r="12" fill="#FFE7B0" opacity=".9"/>' : '<circle cx="294" cy="30" r="17" fill="#FFF3C4"/><circle cx="294" cy="30" r="26" fill="#FFF3C4" opacity=".35"/>');
+  var town = '<g fill="' + (dusk ? '#3A4670' : c[1]) + '" opacity="' + (dusk ? '.9' : '.55') + '"><rect x="6" y="96" width="22" height="50"/><rect x="30" y="80" width="16" height="66"/><rect x="48" y="104" width="26" height="42"/><rect x="230" y="88" width="20" height="58"/><rect x="252" y="70" width="14" height="76"/><ellipse cx="259" cy="70" rx="12" ry="3.5"/><rect x="268" y="100" width="24" height="46"/><rect x="294" y="84" width="22" height="62"/></g>';
+  var hill = '<path d="M0 132 C70 116 130 132 190 122 S290 112 320 124 V200 H0Z" fill="' + (dusk ? '#33405F' : '#B9DDB0') + '"/><path d="M0 150 C80 140 170 156 320 144 V200 H0Z" fill="' + (dusk ? '#2A3550' : '#8CC97A') + '"/>';
+  return [d, sky + town + hill];
+}
+var ART_SCENE = {
+  House: function (p, c) { return bnTree(52, 150, 1.1) + '<path d="M146 152 L174 152 L196 200 H124Z" fill="#E9D9B8"/><rect x="98" y="96" width="124" height="56" fill="#FFF7EA"/><rect x="98" y="138" width="124" height="14" fill="#EFE3CC"/><path d="M86 100 L160 56 L234 100Z" fill="#B5482F"/><path d="M110 86 L160 56 M135 93 L160 56 M185 93 L160 56 M210 86 L160 56" stroke="#9A3B26" stroke-width="1.5"/><rect x="86" y="98" width="148" height="5" fill="#8E3624"/>' + bnWin(112, 110, 24, 20) + bnWin(184, 110, 24, 20) + '<path d="M124 110 V130 M112 120 H136 M196 110 V130 M184 120 H208" stroke="#fff" stroke-width="2"/><rect x="148" y="114" width="24" height="38" rx="2" fill="' + c[2] + '"/><circle cx="167" cy="134" r="1.8" fill="#fff"/>' + bnBush(96, 152) + bnBush(226, 152) + bnBush(268, 156); },
+  Room: function (p, c) { return '<rect width="320" height="200" fill="#F6F1E7"/><rect y="148" width="320" height="52" fill="#C99A5E"/><path d="M0 160 H320 M0 176 H320 M60 148 V160 M150 160 V176 M240 148 V160" stroke="#AD7F45" stroke-width="1.2"/><rect x="118" y="26" width="84" height="64" rx="3" fill="url(#' + p + 'sky)"/><circle cx="182" cy="44" r="9" fill="#FFF3C4"/><rect x="118" y="26" width="84" height="64" rx="3" fill="none" stroke="#fff" stroke-width="4"/><path d="M160 26 V90" stroke="#fff" stroke-width="3"/><path d="M108 22 Q114 60 104 96 H122 Q118 60 124 22Z M212 22 Q206 60 216 96 H198 Q202 60 196 22Z" fill="' + c[2] + '" opacity=".75"/><rect x="104" y="18" width="112" height="5" rx="2" fill="#8B5A2B"/><rect x="62" y="108" width="180" height="48" rx="6" fill="#fff"/><rect x="62" y="96" width="14" height="60" rx="4" fill="#8B5A2B"/><rect x="80" y="104" width="44" height="18" rx="8" fill="#F6F8FB" stroke="#E2E8F0"/><path d="M118 118 H242 V150 H118Z" fill="' + c[2] + '"/><path d="M118 126 H242" stroke="#fff" stroke-width="2" opacity=".5"/><rect x="258" y="122" width="34" height="34" rx="3" fill="#AD7F45"/><path d="M268 122 L262 96 H288 L282 122Z" fill="#FFE7B0"/>'; },
+  Apartment: function (p, c) { var w = ''; for (var r = 0; r < 5; r++) { for (var k = 0; k < 3; k++) w += bnWin(122 + k * 28, 54 + r * 18, 18, 11); w += '<rect x="116" y="' + (66 + r * 18) + '" width="88" height="3" fill="' + c[2] + '" opacity=".7"/>'; } for (var r2 = 0; r2 < 4; r2++) { w += bnWin(216, 78 + r2 * 18, 14, 10) + bnWin(238, 78 + r2 * 18, 14, 10); } return bnTree(60, 152, 1) + '<rect x="112" y="44" width="96" height="108" fill="#F3EEE6"/><rect x="112" y="40" width="96" height="6" fill="#D8CFC2"/><rect x="208" y="68" width="54" height="84" fill="#E4DDD2"/>' + w + '<rect x="150" y="134" width="20" height="18" fill="' + c[2] + '"/>' + bnBush(110, 152) + bnBush(270, 154); },
+  Land: function (p, c) { return bnTree(250, 128, 1.3) + '<path d="M30 168 L110 128 L290 136 L262 182Z" fill="#C9784A"/><path d="M30 168 L110 128 L290 136 L262 182Z" fill="none" stroke="#fff" stroke-width="2.5" stroke-dasharray="8 6"/><path d="M60 160 L120 133 M100 172 L170 136 M150 178 L220 139" stroke="#B5663A" stroke-width="2" opacity=".6"/><g fill="#fff"><rect x="28" y="158" width="4" height="12"/><rect x="108" y="118" width="4" height="12"/><rect x="288" y="126" width="4" height="12"/><rect x="260" y="172" width="4" height="12"/></g><g fill="#D92D20"><rect x="28" y="158" width="4" height="4"/><rect x="108" y="118" width="4" height="4"/><rect x="288" y="126" width="4" height="4"/><rect x="260" y="172" width="4" height="4"/></g><rect x="148" y="96" width="4" height="50" fill="#6B4423"/><rect x="128" y="80" width="46" height="26" rx="3" fill="' + c[2] + '"/><rect x="136" y="88" width="30" height="4" rx="2" fill="#fff"/><rect x="136" y="96" width="20" height="4" rx="2" fill="#fff" opacity=".7"/>'; },
+  Shop: function (p, c) { var aw = ''; for (var k = 0; k < 8; k++) aw += '<path d="M' + (82 + k * 20) + ' 98 a10 8 0 0 0 20 0 V84 H' + (82 + k * 20) + 'Z" fill="' + (k % 2 ? '#fff' : c[2]) + '" stroke="' + c[2] + '" stroke-width="1"/>'; return '<rect x="80" y="70" width="160" height="82" fill="#FFFDF8"/><rect x="88" y="56" width="144" height="22" rx="3" fill="' + c[2] + '"/><rect x="104" y="64" width="112" height="6" rx="3" fill="#fff" opacity=".85"/>' + aw + '<rect x="94" y="110" width="72" height="38" rx="2" fill="#BFD8F7"/><rect x="100" y="128" width="14" height="20" fill="#E08A00"/><rect x="118" y="122" width="14" height="26" fill="#1E9E4A"/><rect x="136" y="132" width="24" height="16" fill="#D92D20"/><path d="M94 128 H166" stroke="#fff" stroke-width="2"/><rect x="180" y="106" width="44" height="46" rx="2" fill="#5B6B86"/><rect x="186" y="112" width="32" height="28" rx="2" fill="#BFD8F7" opacity=".6"/>' + bnBush(68, 152) + bnBush(252, 152); },
+  Office: function (p, c) { var g = ''; for (var r = 0; r < 9; r++) g += '<path d="M132 ' + (36 + r * 13) + ' H198" stroke="#A8C8F7" stroke-width="1.2" opacity=".7"/>'; for (var k = 0; k < 4; k++) g += '<path d="M' + (145 + k * 13) + ' 28 V150" stroke="#A8C8F7" stroke-width="1.2" opacity=".5"/>'; var s = ''; for (var r2 = 0; r2 < 5; r2++) s += bnWin(214, 80 + r2 * 13, 10, 7, '#9DB8E6') + bnWin(232, 80 + r2 * 13, 10, 7, '#9DB8E6'); return '<linearGradient id="' + p + 'gl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6E9BFF"/><stop offset="1" stop-color="#1F4AA8"/></linearGradient><rect x="76" y="96" width="50" height="56" fill="#EEF2F8"/>' + bnWin(84, 106, 12, 9, '#9DB8E6') + bnWin(104, 106, 12, 9, '#9DB8E6') + bnWin(84, 124, 12, 9, '#9DB8E6') + bnWin(104, 124, 12, 9, '#9DB8E6') + '<rect x="130" y="26" width="70" height="126" fill="url(#' + p + 'gl)"/>' + g + '<path d="M130 26 L200 26 L130 90Z" fill="#fff" opacity=".12"/><rect x="206" y="70" width="48" height="82" fill="#DDE6F5"/>' + s + '<rect x="156" y="136" width="18" height="16" fill="#0B1F4B"/>' + bnBush(66, 152) + bnBush(268, 152); },
+  Store: function (p, c) { return bnTree(262, 150, 1) + '<rect x="96" y="80" width="128" height="72" fill="#F3EEE6"/><path d="M84 84 L160 54 L236 84Z" fill="#9AA5B5"/><path d="M100 78 L160 54 M130 70 L160 54 M190 70 L160 54 M220 78 L160 54" stroke="#7F8A9B" stroke-width="1.4"/><rect x="104" y="92" width="112" height="40" rx="3" fill="#fff" stroke="' + c[2] + '" stroke-width="3" stroke-dasharray="7 5"/><rect x="126" y="104" width="68" height="6" rx="3" fill="' + c[2] + '"/><rect x="138" y="116" width="44" height="5" rx="2.5" fill="' + c[1] + '"/><rect x="96" y="132" width="128" height="20" fill="#8B5A2B"/><rect x="104" y="124" width="12" height="10" fill="#E08A00"/><rect x="204" y="122" width="10" height="12" fill="#1E9E4A"/>' + bnBush(84, 152); },
+  Alert: function (p, c) { return '<path d="M0 170 H320 V200 H0Z" fill="#3B4560"/><path d="M10 185 H50 M90 185 H130 M170 185 H210 M250 185 H290" stroke="#F8D08A" stroke-width="3"/><rect x="58" y="58" width="5" height="112" fill="#5E6A86"/><path d="M60 60 Q60 50 76 50 H86" stroke="#5E6A86" stroke-width="5" fill="none"/><ellipse cx="88" cy="56" rx="10" ry="4" fill="#FFE7B0"/><path d="M80 58 L60 150 H140 L96 58Z" fill="#FFE7B0" opacity=".18"/><rect x="198" y="96" width="5" height="76" fill="#5E6A86"/><path d="M200 40 L240 108 H160Z" fill="#fff"/><path d="M200 40 L240 108 H160Z" fill="none" stroke="' + c[2] + '" stroke-width="7" stroke-linejoin="round"/><rect x="196" y="62" width="8" height="26" rx="4" fill="#1B2233"/><circle cx="200" cy="97" r="4.5" fill="#1B2233"/>'; },
+  Police: function (p, c) { return '<rect x="84" y="78" width="152" height="74" fill="#F3EEE6"/><rect x="78" y="70" width="164" height="10" fill="#1650C8"/><rect x="118" y="52" width="84" height="20" rx="3" fill="#1650C8"/><text x="160" y="66.5" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="12" letter-spacing="1.5" fill="#fff">POLICE</text>' + bnWin(98, 94, 26, 20) + bnWin(196, 94, 26, 20) + '<rect x="146" y="104" width="28" height="48" fill="#0B1F4B"/><rect x="152" y="38" width="16" height="10" rx="3" fill="#1650C8"/><rect x="155" y="34" width="10" height="6" rx="2" fill="#6E9BFF"/><path d="M84 152 H236" stroke="#D8CFC2" stroke-width="4"/>' + bnBush(76, 152) + bnBush(244, 152); },
+  Shelter: function (p, c) { return bnTree(56, 150, 1) + '<rect x="104" y="96" width="112" height="56" fill="#F3EEE6"/><path d="M92 100 L160 58 L228 100Z" fill="#B5482F"/><rect x="92" y="98" width="136" height="5" fill="#8E3624"/>' + bnWin(116, 110, 22, 18, '#FFD27A') + bnWin(182, 110, 22, 18, '#FFD27A') + '<rect x="148" y="116" width="24" height="36" fill="#6B4423"/><rect x="148" y="116" width="24" height="36" fill="#FFD27A" opacity=".25"/><path d="M160 88 C156 80 146 82 146 89 C146 95 160 102 160 102 C160 102 174 95 174 89 C174 82 164 80 160 88Z" fill="#D92D20"/>' + bnBush(232, 152); }
+};
 function bannerSvg(theme, scene, cat) {
-  var c = BN[theme] || BN.prop, id = 'bg' + (++bnId), sc = '';
-  var g = '<path d="M0 118 C60 104 120 126 180 112 S300 100 320 110 V200 H0Z" fill="' + c[1] + '" opacity=".55"/><path d="M0 140 C80 126 160 150 240 134 S310 128 320 132 V200 H0Z" fill="' + c[1] + '"/>';
-  var sun = '<circle cx="262" cy="46" r="20" fill="#fff" opacity=".7"/>';
-  if (scene === 'House' || scene === 'Room') sc = '<rect x="104" y="80" width="112" height="72" rx="4" fill="#fff"/><path d="M92 84 L160 36 L228 84Z" fill="' + c[2] + '"/><rect x="148" y="112" width="24" height="40" rx="3" fill="' + c[2] + '" opacity=".85"/><rect x="118" y="98" width="20" height="18" rx="2" fill="' + c[1] + '"/><rect x="182" y="98" width="20" height="18" rx="2" fill="' + c[1] + '"/><circle cx="62" cy="120" r="18" fill="' + c[2] + '" opacity=".45"/><rect x="60" y="126" width="4" height="26" fill="' + c[2] + '" opacity=".6"/>';
-  else if (scene === 'Apartment') sc = '<rect x="96" y="40" width="70" height="112" rx="4" fill="#fff"/><rect x="172" y="66" width="56" height="86" rx="4" fill="#fff" opacity=".9"/>' + [0, 1, 2, 3].map(function (r) { return [0, 1, 2].map(function (k) { return '<rect x="' + (104 + k * 20) + '" y="' + (50 + r * 24) + '" width="12" height="14" rx="2" fill="' + c[1] + '"/>'; }).join('') + (r < 3 ? [0, 1].map(function (k) { return '<rect x="' + (182 + k * 20) + '" y="' + (76 + r * 24) + '" width="12" height="14" rx="2" fill="' + c[1] + '"/>'; }).join('') : ''); }).join('') + '<rect x="122" y="130" width="18" height="22" rx="2" fill="' + c[2] + '"/>';
-  else if (scene === 'Land') sc = '<path d="M40 150 L120 112 L280 122 L250 160Z" fill="#fff" opacity=".85"/><path d="M40 150 L120 112 L280 122 L250 160Z" fill="none" stroke="' + c[2] + '" stroke-width="3" stroke-dasharray="8 6"/><circle cx="210" cy="86" r="22" fill="' + c[2] + '" opacity=".5"/><rect x="207" y="96" width="6" height="30" fill="' + c[2] + '" opacity=".7"/><rect x="132" y="96" width="4" height="30" fill="' + c[2] + '"/><path d="M136 96 h26 l-6 8 6 8 h-26z" fill="' + c[2] + '"/>';
-  else if (scene === 'Shop' || scene === 'Store') sc = '<rect x="82" y="70" width="156" height="82" rx="4" fill="#fff"/><path d="M76 70 h168 l-8 24 h-152z" fill="' + c[2] + '"/>' + [0, 1, 2, 3, 4, 5].map(function (k) { return '<path d="M' + (84 + k * 26) + ' 94 a13 10 0 0 0 26 0" fill="' + (k % 2 ? '#fff' : c[2]) + '"/>'; }).join('') + '<rect x="100" y="110" width="52" height="34" rx="3" fill="' + c[1] + '"/><rect x="170" y="110" width="48" height="42" rx="3" fill="' + c[2] + '" opacity=".8"/>';
-  else if (scene === 'Office') sc = '<rect x="120" y="26" width="80" height="126" rx="4" fill="#fff"/>' + [0, 1, 2, 3, 4].map(function (r) { return '<rect x="130" y="' + (36 + r * 22) + '" width="60" height="12" rx="2" fill="' + c[1] + '"/>'; }).join('') + '<rect x="70" y="86" width="44" height="66" rx="3" fill="#fff" opacity=".8"/><rect x="206" y="72" width="48" height="80" rx="3" fill="#fff" opacity=".8"/>';
-  else if (scene === 'Alert') sc = '<path d="M160 34 L222 142 H98Z" fill="#fff"/><path d="M160 34 L222 142 H98Z" fill="none" stroke="' + c[2] + '" stroke-width="6" stroke-linejoin="round"/><rect x="155" y="72" width="10" height="38" rx="5" fill="' + c[2] + '"/><circle cx="160" cy="124" r="6" fill="' + c[2] + '"/>';
-  else { // lost & found items: a bright circle with the item's icon over a map-like grid
-    sc = '<g opacity=".35" stroke="#fff" stroke-width="3"><path d="M0 60 H320 M0 100 H320 M80 0 V200 M200 0 V200"/></g><circle cx="160" cy="88" r="46" fill="#fff"/><g transform="translate(136 64) scale(2)" fill="none" stroke="' + c[2] + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="' + (ICONS[cat] || ICONS.Other) + '"/></g><path d="M246 40 c-10 0-16 7-16 15 0 11 16 25 16 25 s16-14 16-25 c0-8-6-15-16-15z" fill="' + c[2] + '"/><circle cx="246" cy="55" r="5" fill="#fff"/>';
-    g = '';
+  var c = BN[theme] || BN.prop, p = 'bn' + (++bnId) + '_', body;
+  if (scene === 'item' || !ART_SCENE[scene]) {
+    var art = ART_ITEM[cat] || ART_ITEM.Other;
+    body = '<defs><pattern id="' + p + 'dot" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.3" fill="' + c[1] + '"/></pattern><linearGradient id="' + p + 'scr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3A6BD1"/><stop offset="1" stop-color="#0E1E44"/></linearGradient><radialGradient id="' + p + 'vg" cx=".5" cy=".5" r=".7"><stop offset=".6" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="' + c[1] + '" stop-opacity=".55"/></radialGradient></defs><rect width="320" height="200" fill="' + c[0] + '"/><rect width="320" height="200" fill="url(#' + p + 'dot)" opacity=".55"/><rect width="320" height="200" fill="url(#' + p + 'vg)"/>' + art(p, c) + '<path d="M276 22 c-10 0-16 7-16 15 0 11 16 25 16 25 s16-14 16-25 c0-8-6-15-16-15z" fill="' + c[2] + '"/><circle cx="276" cy="37" r="5" fill="#fff"/>';
+  } else {
+    var dusk = scene === 'Alert' || scene === 'Shelter', s = bnSky(p, c, dusk);
+    body = '<defs>' + s[0] + '</defs>' + s[1] + ART_SCENE[scene](p, c);
   }
-  return '<svg class="banner" viewBox="0 0 320 200" preserveAspectRatio="xMidYMid slice" role="img" aria-hidden="true"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c[0] + '"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="320" height="200" fill="url(#' + id + ')"/>' + (scene === 'item' ? '' : sun) + g + sc + '</svg>';
+  return '<svg class="banner" viewBox="0 0 320 200" preserveAspectRatio="xMidYMid slice" role="img" aria-hidden="true">' + body + '</svg>';
 }
 XCLICK.lfcat = function (b) { var v = b.getAttribute('data-v'); S.lfTab = 'reports'; S.lf.cat = CATS.indexOf(v) >= 0 ? (S.lf.cat === v ? 'all' : v) : 'all'; renderSections(); toast(S.lf.cat === 'all' ? 'Showing all categories.' : 'Showing ' + v + ' reports.'); };
 XCLICK.helpshelter = function () { S.helpType = 'shelter'; hubTo('alTab', 'help', 'alerts'); };
 function headBanner(theme, scenes, title) {
-  return '<div class="hbanner">' + scenes.map(function (s) { return '<button type="button" class="hb" ' + (s[3] || '') + ' aria-label="' + esc(s[2]) + '">' + bannerSvg(theme, s[0], s[1]) + '<span>' + esc(s[2]) + '</span></button>'; }).join('') + '</div>';
+  return '<div class="hbanner">' + scenes.map(function (s) { return '<button type="button" class="hb" ' + (s[3] || '') + ' aria-label="' + esc(s[2]) + '">' + (PHOTO_OK && BANNER_PH[s[2]] ? '<img class="banner" src="' + esc(uph(BANNER_PH[s[2]])) + '" alt="" loading="lazy" onerror="this.remove()">' : bannerSvg(theme, s[0], s[1])) + '<span>' + esc(s[2]) + '</span></button>'; }).join('') + '</div>';
 }
 
 // ---------- Ask AI: search by photo (lens), voice or words; Claude chats and finds answers in the app ----------
@@ -3467,14 +3671,22 @@ var GX = { key: '', reports: [], listings: [], alerts: [] };
 var GX_LF = [['lost', 'Phone', 'Black smartphone with a cracked screen'], ['found', 'Keys', 'Bunch of house keys on a blue lanyard'], ['lost', 'Wallet', 'Brown leather wallet with bank cards'], ['found', 'ID card', 'Driving licence found at the bus stop'], ['lost', 'Pet', 'Grey cat with a red collar'], ['found', 'Backpack', 'Black laptop backpack left on a bench'], ['lost', 'Laptop', 'Silver laptop in a grey sleeve'], ['found', 'Glasses', 'Prescription glasses in a black case'], ['lost', 'Keys', 'Car key with a small torch keyring'], ['found', 'Phone', 'Phone in a pink case found in a taxi'], ['lost', 'Umbrella', 'Large green umbrella with wooden handle'], ['found', 'Pet', 'Friendly brown dog, no collar']];
 var GX_PR = [['To let', 'Apartment', '2-bedroom flat near the station', 1800, 'per month', '2'], ['To let', 'Room', 'Furnished room, bills included', 700, 'per month', 'Studio'], ['For sale', 'House', '3-bedroom family house with garden', 450000, 'asking', '3'], ['For sale', 'Land', 'Building plot with planning permission', 120000, 'asking', 'n/a'], ['To let', 'Shop', 'High-street shop unit', 2500, 'per month', 'n/a'], ['Short stay', 'Apartment', 'Modern studio for short stays', 90, 'per night', 'Studio'], ['To let', 'House', '4-bedroom house with parking', 3200, 'per month', '4'], ['For sale', 'Apartment', '1-bedroom apartment with balcony', 220000, 'asking', '1'], ['To let', 'Office', 'Small office with meeting room', 1500, 'per month', 'n/a'], ['For sale', 'Land', 'Farm land with water access', 60000, 'asking', 'n/a'], ['Short stay', 'House', 'Holiday cottage, sleeps 6', 160, 'per night', '3'], ['To let', 'Apartment', 'Studio flat close to shops', 1100, 'per month', 'Studio']];
 var GX_AL = [['Theft', 'high', 'Bags snatched near the market after dark.'], ['Road block', 'low', 'Road works, one lane closed this week.'], ['Flooding', 'medium', 'Underpass floods after heavy rain.'], ['Accident', 'medium', 'Collision at the roundabout, traffic slow.'], ['Mugging', 'high', 'Two people robbed near the footbridge at night.'], ['Power outage', 'low', 'Power cut across the estate since morning.']];
+// ---------- real photos (Unsplash, free licence) for example posts and section banners ----------
+// Shown only where the browser can load them; otherwise the drawn pictures stay.
+function uph(id) { return 'https://images.unsplash.com/' + id + '?auto=format&fit=crop&w=640&q=70'; }
+var PHOTO_OK = false;
+(function () { var im = new Image(); im.onload = function () { PHOTO_OK = true; GX.key = ''; try { gxApply(); } catch (e) {} scheduleSections(); }; im.src = uph('photo-1579014134953-1580d7f123f3').replace('w=640', 'w=8'); })();
+var GX_LF_PH = ['photo-1706972612595-aa53b400ee80', 'flagged/photo-1564767609342-620cb19b2357', 'photo-1614330315526-166f2d71e544', 'photo-1487637419635-a2a471ff5c7b', 'photo-1489084917528-a57e68a79a1e', 'photo-1553062407-98eeb64c6a62', 'photo-1496181133206-80ce9b88a853', 'photo-1632986636968-04958bfbbf3f', 'photo-1710006548781-eff5670376fa', 'photo-1731391747600-4d0f478b2184', 'photo-1766475973471-e5cca8cfb7ab', 'photo-1562317305-58a17fe2c09e'];
+var GX_PR_PH = ['photo-1515263487990-61b07816b324', 'photo-1502672260266-1c1ef2d93688', 'photo-1480074568708-e7b720bb3f09', 'photo-1599809563132-4b678fb6f611', 'photo-1528698827591-e19ccd7bc23d', 'photo-1522708323590-d24dbb6b0267', 'photo-1570129477492-45c003edd2be', 'photo-1545324418-cc1a3fa10c00', 'photo-1497366811353-6870744d04b2', 'photo-1647893168443-6322905c938b', 'photo-1598228723793-52759bba239c', 'photo-1560448204-e02f11c3d0e2'];
+var BANNER_PH = { 'Phones': 'photo-1706972612595-aa53b400ee80', 'Wallets & IDs': 'photo-1579014134953-1580d7f123f3', 'Keys': 'flagged/photo-1564767609342-620cb19b2357', 'Pets': 'photo-1562317305-58a17fe2c09e', 'Houses': 'photo-1480074568708-e7b720bb3f09', 'Apartments': 'photo-1545324418-cc1a3fa10c00', 'Land': 'photo-1599809563132-4b678fb6f611', 'Shops': 'photo-1777879760931-3a21a9bf42d6', 'Safety alerts': 'photo-1606022831434-91293aebf25a', 'Police & help': 'photo-1563741603582-adf5a8332a73', 'Shelters': 'photo-1604601638406-edc29b54dcf7', 'Services': 'photo-1564540574859-0dfb63985953', 'Your ad here': 'photo-1761850648640-2ee5870ee883' };
 function gxBuild() {
   var cc = focusCC(), f = focusPoint(); if (!cc || !GZ) return;
   var c = curCountry(), cur = FX[c.cur] ? c.cur : 'USD', towns = gxTowns(f, cc, 14), rnd = gxRand(cc + towns[0].name), now = Date.now(), H = 3600000;
   var at = function (i) { var t = towns[i % towns.length]; return { lat: t.lat + (rnd() - 0.5) * 0.012, lon: t.lon + (rnd() - 0.5) * 0.012, place: t.name }; };
   var real = function (arr) { return arr.some(function (r) { return !r.gx && postCC(r) === cc; }); };
   var D = 'This is an example post that shows how Find & Found works here. It is not a real item.';
-  GX.reports = real(reports) ? [] : GX_LF.map(function (x, i) { var p = at(i); return { id: 'gx-' + cc + '-lf' + i, gx: true, example: true, kind: x[0], cat: x[1], title: 'Example · ' + x[2], desc: D, lat: p.lat, lon: p.lon, place: p.place, radius: 300, status: 'open', ownerId: null, photoId: null, cc: cc, createdAt: now - (i * 4 + 2) * H }; });
-  GX.listings = real(listings) ? [] : GX_PR.map(function (x, i) { var p = at(i + 2); return { id: 'gx-' + cc + '-pr' + i, gx: true, example: true, ltype: x[0], pkind: x[1], title: 'Example · ' + x[2], desc: D, price: gxPrice(x[3], cc, cur), cur: cur, period: x[4], beds: x[5], who: i % 2 ? 'Agent' : 'Owner', lat: p.lat, lon: p.lon, place: p.place, status: 'open', ownerId: null, photoId: null, cc: cc, createdAt: now - (i * 7 + 3) * H }; });
+  GX.reports = real(reports) ? [] : GX_LF.map(function (x, i) { var p = at(i); return { id: 'gx-' + cc + '-lf' + i, gx: true, example: true, kind: x[0], cat: x[1], title: 'Example · ' + x[2], desc: D, lat: p.lat, lon: p.lon, place: p.place, radius: 300, status: 'open', ownerId: null, photoId: PHOTO_OK && GX_LF_PH[i] ? uph(GX_LF_PH[i]) : null, cc: cc, createdAt: now - (i * 4 + 2) * H }; });
+  GX.listings = real(listings) ? [] : GX_PR.map(function (x, i) { var p = at(i + 2); return { id: 'gx-' + cc + '-pr' + i, gx: true, example: true, ltype: x[0], pkind: x[1], title: 'Example · ' + x[2], desc: D, price: gxPrice(x[3], cc, cur), cur: cur, period: x[4], beds: x[5], who: i % 2 ? 'Agent' : 'Owner', lat: p.lat, lon: p.lon, place: p.place, status: 'open', ownerId: null, photoId: PHOTO_OK && GX_PR_PH[i] ? uph(GX_PR_PH[i]) : null, cc: cc, createdAt: now - (i * 7 + 3) * H }; });
   GX.alerts = real(alerts) ? [] : GX_AL.map(function (x, i) { var p = at(i + 4); return { id: 'gx-' + cc + '-al' + i, gx: true, example: true, atype: x[0], sev: x[1], desc: 'Example: ' + x[2] + ' Not a real alert.', lat: p.lat, lon: p.lon, place: p.place, radius: 300, confirms: [], ownerId: null, cc: cc, createdAt: now - (i * 9 + 4) * H }; });
 }
 function gxApply() {
@@ -3717,7 +3929,7 @@ document.addEventListener('click', function (e) {
     case 'ungrab': setGrab(false); break;
     case 'zin': zoomBy(2); break;
     case 'zout': zoomBy(0.5); break;
-    case 'style': S.style = S.style === 'sat' ? 'map' : 'sat'; app.classList.toggle('sat', S.style === 'sat'); $('credit').hidden = S.style !== 'sat'; satDirty = true; renderCtrl(); kick(); break;
+    case 'style': S.style = S.style === 'sat' ? 'map' : 'sat'; app.classList.toggle('sat', S.style === 'sat'); $('credit').hidden = !(S.style === 'sat' || TL.ok); satDirty = true; renderCtrl(); kick(); break;
     case 'layer': var l = b.getAttribute('data-l'); S.layers[l] = !S.layers[l]; renderUI(); scheduleSections(); kick(); break;
     case 'back':
       if (S.screen === 'thread') { if (S.threadFrom === 'detail' && S.selId && itemById(S.selId)) go('detail', itemById(S.selId)); else go('inbox'); }
@@ -3789,7 +4001,7 @@ document.addEventListener('submit', function (e) {
   if (id === 'donform') { var dv = (($('don-in') || {}).value || '').trim().slice(0, 300); if (db && isAdmin) db.doc('settings/site').update({ donate: dv }).then(function () { toast('Donation details saved.'); }, function (er) { dbErr(er, 'the donation details'); }); return; }
   if (id === 'hform') { var hqi = $('hq'); S.hq = hqi ? hqi.value : S.hq; homeSearch(); return; }
   if (id === 'imeiform') { var m1 = S.modal, v1 = ($('imei-in') || {}).value || ''; if (!m1 || normId(v1).length < 5) { toast('Enter the full IMEI or serial number.'); return; } m1.q = v1; m1.busy = true; renderModal(); sha256(normId(v1)).then(function (h) { return db ? db.collection('reports').where('idHash', '==', h).limit(5).get().then(function (sn) { return snapList(sn); }) : reports.filter(function (r) { return r.idHash === h; }); }).then(function (list) { m1.busy = false; m1.result = list; renderModal(); }, function () { m1.busy = false; m1.result = []; renderModal(); }); return; }
-  if (id === 'tagform') { var lab = (($('tag-in') || {}).value || '').trim(); if (!lab) { toast('Name the item first, e.g. House keys.'); return; } var tref = db.collection('tags').doc(); tref.set({ ownerId: myId, label: lab.slice(0, 40), createdAt: Date.now() }).then(function () { S.modal.tag = { id: tref.id, label: lab.slice(0, 40), ownerId: myId }; S.modal.label = ''; renderModal(); }, function (er) { dbErr(er, 'the tag'); }); return; }
+  if (id === 'tagform') { var labs = (($('tag-in') || {}).value || '').split(/[,\n]/).map(function (x) { return x.trim().slice(0, 40); }).filter(Boolean).slice(0, 30); if (!labs.length) { toast('Name the item first, e.g. House keys.'); return; } var made = [], now0 = Date.now(); Promise.all(labs.map(function (lab, i) { var tref = db.collection('tags').doc(); made.push({ id: tref.id, label: lab, ownerId: myId }); return tref.set({ ownerId: myId, label: lab, createdAt: now0 + i }); })).then(function () { S.modal.tag = made[made.length - 1]; S.modal.label = ''; renderModal(); if (made.length > 1) toast(made.length + ' tags made.'); }, function (er) { dbErr(er, 'the tag'); }); return; }
   if (id === 'storyform') { var stt = (($('st-title') || {}).value || '').trim(), stx = (($('st-text') || {}).value || '').trim(); if (!stt || stx.length < 20) { S.modal.title = stt; S.modal.text = stx; S.modal.err = 'Add a title and a few sentences.'; renderModal(); return; } db.collection('stories').add({ ownerId: myId, title: stt.slice(0, 80), text: stx.slice(0, 1200), createdAt: Date.now() }).then(function () { closeModal(); toast('Thank you for sharing your story.'); }, function (er) { dbErr(er, 'your story'); }); return; }
   if (id === 'qform') { var s = matches(S.query), hq = contentHits(S.query); if (s.length && !s[0].none && !(hq.first && hq.first.a !== 'helptype2' && !/[,\d]/.test(S.query) && !matchesPlaceExactly(S.query, s[0]))) goMatch(s[0]); else if (hq.first) hitGo(hq.first); else if (s.length) toast(s[0].title + '. ' + s[0].sub + '.'); else toast('No match. Try a town like Westlands, coordinates like -1.29, 36.82, or a Google Maps link.'); }
   else if (id === 'composer') sendMsg();

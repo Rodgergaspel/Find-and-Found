@@ -6,8 +6,19 @@
   var CFG = window.FF_FIREBASE_CONFIG || {};
   var ready = !!(CFG.apiKey && CFG.projectId && window.firebase && firebase.initializeApp);
   function none() { return Promise.resolve(null); }
+  // Saves a file the page made (sticker PNG, sticker sheet PDF) with a normal browser download.
+  var DL = {
+    save: function (o) {
+      try {
+        var url = URL.createObjectURL(o.data), el = document.createElement('a');
+        el.href = url; el.download = o.filename || 'findfound-file'; document.body.appendChild(el); el.click();
+        setTimeout(function () { URL.revokeObjectURL(url); el.remove(); }, 4000);
+        return Promise.resolve({ status: 'saved' });
+      } catch (e) { return Promise.reject(e); }
+    }
+  };
   window.FFAuth = { configured: ready, signIn: function () {}, signOut: function () {}, user: null };
-  if (!ready) { window.claude = { use: none }; return; }
+  if (!ready) { window.claude = { use: function (name) { return name === 'downloads' ? Promise.resolve(DL) : none(); } }; return; }
 
   firebase.initializeApp(CFG);
   var auth = firebase.auth(), fs = firebase.firestore();
@@ -122,6 +133,7 @@
     use: function (name) {
       if (name === 'db') return Promise.resolve(DB);
       if (name === 'user') return Promise.resolve(USER);
+      if (name === 'downloads') return Promise.resolve(DL);
       if (name === 'assets') return authReady.then(function (u) { return storage && u ? ASSETS : null; });
       return none();
     }
